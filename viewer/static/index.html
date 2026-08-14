@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Villa Unknown — season viewer</title>
+  <style>
+    :root {
+      --bg: #140c16;
+      --panel: #1f1524;
+      --ink: #f7efe8;
+      --muted: #b9a8b0;
+      --accent: #ff4d8d;
+      --gold: #e7c27d;
+      --line: #3a2a3c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      background: radial-gradient(1200px 600px at 10% -10%, #3a1630, var(--bg));
+      color: var(--ink);
+    }
+    header {
+      padding: 1.25rem 1.5rem 0.5rem;
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+    h1 { margin: 0; font-size: 1.4rem; letter-spacing: 0.04em; }
+    h1 span { color: var(--accent); }
+    .sub { color: var(--muted); font-size: 0.95rem; }
+    .wrap { display: grid; grid-template-columns: 280px 1fr; gap: 1rem; padding: 1rem 1.5rem 2rem; }
+    @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
+    .panel {
+      background: color-mix(in srgb, var(--panel) 88%, black);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 1rem;
+    }
+    .islander { padding: 0.6rem 0; border-bottom: 1px solid var(--line); }
+    .islander:last-child { border-bottom: 0; }
+    .name { font-weight: 700; }
+    .meta { color: var(--muted); font-size: 0.85rem; }
+    .pill {
+      display: inline-block;
+      font-size: 0.72rem;
+      padding: 0.1rem 0.45rem;
+      border-radius: 999px;
+      background: #2a1b2e;
+      color: var(--gold);
+      margin-right: 0.3rem;
+    }
+    .pill.dumped { color: #ff8a8a; }
+    .controls { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    label { color: var(--muted); font-size: 0.9rem; }
+    .event { padding: 0.55rem 0; border-bottom: 1px dashed var(--line); font-size: 0.95rem; }
+    .tag.thought { color: var(--gold); }
+    .event.thought { border-left: 3px solid var(--gold); padding-left: 0.5rem; }
+    .thought { color: var(--gold); font-style: italic; font-size: 0.88rem; margin-top: 0.2rem; }
+    .hidden { display: none; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 0.75rem; }
+    th, td { border-bottom: 1px solid var(--line); padding: 0.35rem 0.4rem; text-align: right; }
+    th:first-child, td:first-child { text-align: left; }
+    .winners { color: var(--gold); font-weight: 700; margin: 0.5rem 0 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Villa Unknown <span>// season viewer</span></h1>
+      <div class="sub" id="subtitle">Load a run with <code>python scripts/run_villa.py</code></div>
+    </div>
+    <div class="sub" id="winners"></div>
+  </header>
+  <div class="wrap">
+    <aside class="panel" id="cast"></aside>
+    <main class="panel">
+      <div class="controls">
+        <label>Day
+          <select id="day"></select>
+        </label>
+        <label><input type="checkbox" id="thoughts" checked /> Show private thoughts</label>
+        <label><input type="checkbox" id="whispers" checked /> Show whispers</label>
+        <label><input type="checkbox" id="diary" checked /> Show diary room</label>
+      </div>
+      <div id="timeline"></div>
+      <h3>Attraction matrix</h3>
+      <div id="matrix"></div>
+    </main>
+  </div>
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    function visOk(ev, filters) {
+      if (ev.kind === "whisper" && !filters.whispers) return false;
+      if (ev.kind === "diary" && !filters.diary) return false;
+      if (ev.kind === "thought" && !filters.thoughts) return false;
+      return true;
+    }
+
+    function render(events, state) {
+      const days = [...new Set(events.map(e => e.day))];
+      const daySel = $("day");
+      const current = daySel.value ? Number(daySel.value) : days[0];
+      daySel.innerHTML = days.map(d => `<option ${d===current?"selected":""}>${d}</option>`).join("");
+      const day = Number(daySel.value);
+      const filters = {
+        thoughts: $("thoughts").checked,
+        whispers: $("whispers").checked,
+        diary: $("diary").checked,
+      };
+
+      const islanders = state.islanders || {};
+      const names = Object.keys(islanders);
+      $("cast").innerHTML = "<h3>The villa</h3>" + names.map(n => {
+        const i = islanders[n];
+        const dumped = i.dumped || (state.dumped || []).includes(n);
+        const couple = i.coupled_with ? `coupled with ${i.coupled_with}` : "single";
+        const rep = (state.reputation && state.reputation[n] != null) ? state.reputation[n].toFixed(1) : "?";
+        return `<div class="islander"><div class="name">${n}</div>
+          <div class="meta"><span class="pill ${dumped?"dumped":""}">${dumped?"dumped":couple}</span>
+          rep ${rep} · ${i.location || ""}</div>
+          ${filters.thoughts && i.last_thought ? `<div class="thought">last: ${i.last_thought}</div>` : ""}</div>`;
+      }).join("") || "<p class='meta'>No checkpoint yet.</p>";
+
+      if (state.winner_couple && state.winner_couple.length) {
+        $("winners").innerHTML = "Winners: " + state.winner_couple.join(" & ");
+        $("winners").className = "winners";
+      }
+      $("subtitle").textContent = `${events.length} logged beats · day ${state.day || "?"} · ${state.season_name || "season"}`;
+
+      const timeline = events.filter(e => e.day === day && visOk(e, filters));
+      $("timeline").innerHTML = timeline.map(e => {
+        const who = e.target ? `${e.actor || "?"} → ${e.target}` : (e.actor || "");
+        const cls = e.kind === "thought" ? "event thought" : "event";
+        const line = e.kind === "thought"
+          ? `<span class="tag thought">thinks</span><strong>${e.actor || "?"}</strong> ${e.text || ""}`
+          : `<span class="tag">${e.kind}</span><strong>${who}</strong> ${e.text || ""}`;
+        return `<div class="${cls}">${line}</div>`;
+      }).join("") || "<p class='meta'>No events this day.</p>";
+
+      if (!names.length) { $("matrix").innerHTML = ""; return; }
+      let html = "<table><tr><th></th>" + names.map(n => `<th>${n.slice(0,4)}</th>`).join("") + "</tr>";
+      for (const row of names) {
+        html += `<tr><th>${row}</th>`;
+        for (const col of names) {
+          if (row === col) { html += "<td>—</td>"; continue; }
+          const rel = (((islanders[row] || {}).relationships) || {})[col];
+          html += `<td>${rel ? Math.round(rel.attraction) : ""}</td>`;
+        }
+        html += "</tr>";
+      }
+      html += "</table>";
+      $("matrix").innerHTML = html;
+    }
+
+    async function boot() {
+      const [events, state] = await Promise.all([
+        fetch("/api/events").then(r => r.json()),
+        fetch("/api/state").then(r => r.json()),
+      ]);
+      const redraw = () => render(events, state);
+      ["day", "thoughts", "whispers", "diary"].forEach(id => $(id).addEventListener("change", redraw));
+      redraw();
+    }
+    boot().catch(err => { $("subtitle").textContent = "Could not load logs: " + err; });
+  </script>
+</body>
+</html>
