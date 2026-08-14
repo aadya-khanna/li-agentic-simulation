@@ -1,8 +1,12 @@
 # Love Island Agentic Simulation
 
-A social sandbox: six islanders, a villa clock, and one trophy. Relationships are not scripted. Ceremonies (coupling, dumping, finale) are **code**. Dialogue, whispers, and strategy are **agents**.
+Fully autonomous love island social simulation sandbox with 6 agents doing what it takes to win. This simulation follows Love Island game shows ceremonies and timings closely (coupling, dumping, finale), as such, agent relationships are not scripted.
 
-This is a small Generative Agents-style loop (memory → decide → act) with Love Island rules.
+This is a passion project designed to shed light on agent behaviour, model thinking, and unregulated agent social interaction in a simulated environment. 
+
+## Core
+
+Every agents ('islanders') thoughts and public conversations are logged per run. Every major decision and chats are also logged in agent memory. 
 
 ## Quick start
 
