@@ -5,6 +5,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from .config import Settings
 from .logging_utils import EventLog
 from .models import IslanderProfile, LogEvent, VillaState
 
@@ -33,10 +34,15 @@ def print_open(
     profiles: dict[str, IslanderProfile],
     stub: bool,
     model: str | None = None,
+    settings: Settings | None = None,
 ) -> None:
+    settings = settings or Settings()
     intro = Text()
     intro.append(f"{state.season_name}\n", style="bold magenta")
-    intro.append("Islanders. One villa. £50,000. Stay coupled or go home.\n")
+    intro.append("Islanders. One villa. Stay coupled or go home.\n")
+    intro.append(
+        f"handles only · prize={settings.prize_emphasis} · dual_thought={settings.dual_thought}\n"
+    )
     if stub:
         intro.append("Mode: stub (no API calls)\n\n")
     else:
@@ -47,7 +53,7 @@ def print_open(
     for p in profiles.values():
         late = f" · bombshell day {p.enters_on}" if p.enters_on > 1 else ""
         intro.append(f"{p.name}", style="bold")
-        intro.append(f" — {p.archetype} ({p.occupation}, {p.hometown}){late}\n")
+        intro.append(f" — handle ({p.gender}s huddle){late}\n")
     console.print(Panel(intro, title="Love Island Agentic Simulation", border_style="magenta"))
 
 
@@ -57,6 +63,8 @@ def print_day(state: VillaState, log: EventLog) -> None:
     for event in events:
         if event.kind == "pass" and not event.thought:
             continue
+        if event.kind == "thought":
+            continue
         _append_event(body, event)
     couples = ", ".join(f"{a} & {b}" for a, b in state.couples()) or "none"
     singles = ", ".join(state.singles()) or "—"
@@ -65,7 +73,7 @@ def print_day(state: VillaState, log: EventLog) -> None:
     console.print(
         Panel(body, title=f"Day {state.day} — episode recap", border_style="magenta", subtitle=footer)
     )
-    _relationship_table(state)
+    _contact_table(state)
 
 
 def _append_event(body: Text, event: LogEvent) -> None:
@@ -91,17 +99,23 @@ def _append_event(body: Text, event: LogEvent) -> None:
     if event.kind == "thought":
         body.append(f"{actor}: ", style="bold")
         body.append(f"{event.text}\n", style="italic gold1")
+        if event.play:
+            body.append(f"         play: {event.play}\n", style="dim italic green")
         return
     if event.kind in {"speak", "whisper", "date", "huddle"} and event.target:
         body.append(f"{actor} → {event.target}: ", style="bold")
     elif event.actor:
         body.append(f"{actor}: ", style="bold")
     body.append(f"{event.text}\n")
+    if event.thought:
+        body.append(f"         thinks: {event.thought}\n", style="italic gold1")
+    if event.play:
+        body.append(f"         play: {event.play}\n", style="dim italic green")
 
 
-def _relationship_table(state: VillaState) -> None:
+def _contact_table(state: VillaState) -> None:
     names = state.active_names()
-    table = Table(title="Attraction (row → column)", show_lines=False, pad_edge=False)
+    table = Table(title="Talked with (talks / whispers)", show_lines=False, pad_edge=False)
     table.add_column("", style="bold")
     for n in names:
         table.add_column(n[:4], justify="right")
@@ -111,8 +125,11 @@ def _relationship_table(state: VillaState) -> None:
             if row == col:
                 cells.append("—")
             else:
-                rel = state.islanders[row].relationships.get(col)
-                cells.append(f"{rel.attraction:.0f}" if rel else "?")
+                log = state.islanders[row].contacts.get(col)
+                if not log or (log.talks == 0 and log.whispers == 0):
+                    cells.append("")
+                else:
+                    cells.append(f"{log.talks}/{log.whispers}")
         table.add_row(*cells)
     console.print(table)
 

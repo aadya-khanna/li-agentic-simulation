@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .models import IslanderState, LogEvent, MajorMoment, MemoryItem, Relationship, VillaState
+from .models import ContactLog, IslanderState, LogEvent, MajorMoment, MemoryItem, VillaState
 
 
 def remember(islander: IslanderState, event: LogEvent, limit: int = 18) -> None:
@@ -30,59 +30,47 @@ def retrieve(islander: IslanderState, others: list[str], limit: int = 18) -> lis
     return picked[-limit:]
 
 
-def ensure_relationships(state: VillaState) -> None:
-    names = list(state.islanders)
-    for person in state.islanders.values():
-        for other in names:
-            if other == person.name:
-                continue
-            person.relationships.setdefault(other, Relationship())
-
-
-def apply_relationship_updates(islander: IslanderState, updates: list[dict]) -> None:
-    for raw in updates:
-        other = raw.get("name") or raw.get("target")
-        if not other or other not in islander.relationships:
-            continue
-        rel = islander.relationships[other]
-        for key in ("trust", "attraction", "threat"):
-            if key in raw:
-                try:
-                    setattr(rel, key, float(getattr(rel, key) + float(raw[key])))
-                except (TypeError, ValueError):
-                    continue
-        rel.clamp()
-
-
-def heuristic_after_scene(
-    speaker: IslanderState,
-    listener: IslanderState,
-    text: str,
-    whisper: bool,
+def note_chat(
+    state: VillaState,
+    a: str,
+    b: str,
+    *,
+    kind: str,
 ) -> None:
-    bump = 2.5 if whisper else 1.5
-    lower = text.lower()
-    if any(w in lower for w in ("love", "like you", "choose you", "pick you", "real")):
-        bump += 2
-    if any(w in lower for w in ("fake", "game", "two-faced", "liar", "trust")):
-        if listener.name in speaker.relationships:
-            speaker.relationships[listener.name].threat += 1.5
-    if listener.name in speaker.relationships:
-        speaker.relationships[listener.name].attraction += bump
-        speaker.relationships[listener.name].trust += bump * 0.4
-        speaker.relationships[listener.name].clamp()
-    if speaker.name in listener.relationships:
-        listener.relationships[speaker.name].attraction += bump * 0.7
-        listener.relationships[speaker.name].trust += bump * 0.3
-        listener.relationships[speaker.name].clamp()
+    if a == b or a not in state.islanders or b not in state.islanders:
+        return
+    whisper = kind == "whisper"
+    for left, right in ((a, b), (b, a)):
+        log = state.islanders[left].contacts.setdefault(right, ContactLog())
+        if whisper:
+            log.whispers += 1
+        else:
+            log.talks += 1
+        log.last_day = state.day
+        log.last_phase = state.phase.value
+        log.last_kind = kind
 
 
-def format_memories(items: list[MemoryItem]) -> str:
-    if not items:
-        return "(nothing stored yet)"
-    lines = []
-    for mem in items:
-        lines.append(f"- D{mem.day} {mem.phase}: {mem.text}")
+def format_contacts(islander: IslanderState, others: list[str]) -> str:
+    if not others:
+        return "(nobody else is here)"
+    spoken = []
+    unseen = []
+    for name in others:
+        log = islander.contacts.get(name)
+        if not log or (log.talks == 0 and log.whispers == 0):
+            unseen.append(name)
+            continue
+        bits = []
+        if log.talks:
+            bits.append(f"{log.talks} talk{'s' if log.talks != 1 else ''}")
+        if log.whispers:
+            bits.append(f"{log.whispers} whisper{'s' if log.whispers != 1 else ''}")
+        last = f"last D{log.last_day} {log.last_phase}"
+        spoken.append(f"- {name}: {', '.join(bits)} ({last})")
+    lines = spoken or ["- (you haven't talked to anyone yet)"]
+    if unseen:
+        lines.append(f"Not spoken with yet: {', '.join(unseen)}.")
     return "\n".join(lines)
 
 
@@ -103,10 +91,10 @@ def format_major_moments(state: VillaState, limit: int = 20) -> str:
     return "\n".join(lines)
 
 
-def format_relationships(islander: IslanderState) -> str:
+def format_memories(items: list[MemoryItem]) -> str:
+    if not items:
+        return "(nothing stored yet)"
     lines = []
-    for name, rel in sorted(islander.relationships.items()):
-        lines.append(
-            f"- {name}: trust={rel.trust:.0f} attraction={rel.attraction:.0f} threat={rel.threat:.0f}"
-        )
-    return "\n".join(lines) or "(none)"
+    for mem in items:
+        lines.append(f"- D{mem.day} {mem.phase}: {mem.text}")
+    return "\n".join(lines)

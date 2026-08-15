@@ -8,7 +8,10 @@ import yaml
 from .agent import (
     WORLD_ACTIONS,
     decision_user_prompt,
+    grafting_nudge,
+    in_character_nudge,
     parse_allowed,
+    prize_nudge,
     system_prompt,
     validate_target,
 )
@@ -16,7 +19,7 @@ from .config import DATA_DIR, LOG_DIR, Settings
 from .host import Host
 from .llm import LLMClient
 from .logging_utils import EventLog, save_checkpoint
-from .memory import apply_relationship_updates, ensure_relationships, heuristic_after_scene, remember, record_moment
+from .memory import note_chat, remember, record_moment
 from .models import (
     Action,
     ActionType,
@@ -45,7 +48,11 @@ def load_schedule(path: Path | None = None) -> SeasonSchedule:
     return SeasonSchedule.model_validate(raw)
 
 
-def new_villa(profiles: dict[str, IslanderProfile], season_name: str) -> VillaState:
+def new_villa(
+    profiles: dict[str, IslanderProfile],
+    season_name: str,
+    settings: Settings | None = None,
+) -> VillaState:
     locations = [Location.LOUNGE, Location.POOL, Location.TERRACE]
     islanders = {}
     reputation = {}
@@ -57,8 +64,14 @@ def new_villa(profiles: dict[str, IslanderProfile], season_name: str) -> VillaSt
             entered_day=1,
         )
         reputation[profile.name] = 50.0
-    state = VillaState(season_name=season_name, islanders=islanders, reputation=reputation)
-    ensure_relationships(state)
+    settings = settings or Settings()
+    state = VillaState(
+        season_name=season_name,
+        islanders=islanders,
+        reputation=reputation,
+        prize_emphasis=settings.prize_emphasis,
+        dual_thought=settings.dual_thought,
+    )
     return state
 
 
@@ -69,8 +82,8 @@ class Simulation:
         self.schedule = load_schedule()
         self.llm = LLMClient(self.settings, {n: p for n, p in self.profiles.items()})
         self.log = EventLog(self.settings.log_path)
-        self.state = new_villa(self.profiles, self.schedule.season_name)
-        self.host = Host(self.profiles, self.llm, self.log)
+        self.state = new_villa(self.profiles, self.schedule.season_name, self.settings)
+        self.host = Host(self.profiles, self.llm, self.log, self.settings)
 
     def decide(
         self,
@@ -79,8 +92,10 @@ class Simulation:
         extra: str,
         scene: bool,
     ) -> Action:
-        system = system_prompt(profile)
-        user = decision_user_prompt(profile, self.state, allowed, extra=extra, scene=scene)
+        system = system_prompt(profile, self.settings)
+        user = decision_user_prompt(
+            profile, self.state, allowed, extra=extra, scene=scene, settings=self.settings
+        )
         action = self.llm.decide_action(profile.name, system, user)
         action = validate_target(parse_allowed(action, allowed), self.state, profile.name)
         self.log_inner_thought(profile.name, action)
@@ -88,17 +103,19 @@ class Simulation:
 
     def log_inner_thought(self, name: str, action: Action) -> None:
         text = (action.thought or "").strip()
-        if not text:
+        play = (action.play or "").strip()
+        if not text and not play:
             return
         state = self.state
         islander = state.islanders[name]
-        islander.last_thought = text
+        islander.last_thought = text or play
         islander.inner_thoughts.append(
             InnerThought(
                 day=state.day,
                 phase=state.phase.value,
                 tick=state.tick,
                 text=text,
+                play=action.play or "",
                 action=action.type.value,
                 target=action.target,
             )
@@ -114,7 +131,8 @@ class Simulation:
             visibility=Visibility.PRIVATE.value,
             text=text,
             thought=text,
-            extra={"action": action.type.value},
+            play=action.play or None,
+            extra={"action": action.type.value, "play": action.play or ""},
         )
         self.log.write(event)
         remember(islander, event, limit=self.settings.memory_limit)
@@ -161,7 +179,7 @@ class Simulation:
             profile = self.profiles[actor]
             extra = (
                 f"SCENE REPLY. {other} just said: {last_line!r}. "
-                f"Reply in character. type=speak, target={other}."
+                f"{in_character_nudge()} type=speak, target={other}."
             )
             action = self.decide(
                 profile,
@@ -173,7 +191,6 @@ class Simulation:
             turns.append((actor, other, line, action.thought, action))
             last_line = line
             last_actor = actor
-            apply_relationship_updates(state.islanders[actor], action.relationship_updates)
             if action.type == ActionType.PASS:
                 break
 
@@ -190,11 +207,12 @@ class Simulation:
                 visibility=vis,
                 text=line,
                 thought=thought,
+                play=action.play or None,
             )
             self.log.write(event)
             self.broadcast(event)
             state.islanders[actor].last_thought = thought or ""
-        heuristic_after_scene(sp, tg, opening.content or "", whisper=whisper)
+        note_chat(state, speaker, target, kind=kind)
         if not whisper:
             loc = tg.location.value
             record_moment(
@@ -212,15 +230,10 @@ class Simulation:
             if name in busy or state.islanders[name].dumped:
                 continue
             profile = self.profiles[name]
-            extra = (
-                "Free grafting. The prize is £50,000. Talk to anyone — other boys, other girls, "
-                "your couple, or someone else's. Clock the villa. Stir, flirt, or lock someone down. "
-                "Sitting in silence loses."
-            )
+            extra = grafting_nudge(self.settings.prize_emphasis)
             action = self.decide(profile, WORLD_ACTIONS, extra, False)
             me = state.islanders[name]
             me.last_thought = action.thought
-            apply_relationship_updates(me, action.relationship_updates)
 
             if action.type == ActionType.MOVE and action.location:
                 me.location = action.location
@@ -234,6 +247,7 @@ class Simulation:
                     visibility=Visibility.LOCATION.value,
                     text=action.content or f"{name} goes to the {me.location.value}.",
                     thought=action.thought,
+                    play=action.play or None,
                 )
                 self.log.write(event)
                 self.broadcast(event)
@@ -250,6 +264,7 @@ class Simulation:
                     visibility=Visibility.PRIVATE.value,
                     text=action.content or f"{name} checks in with the camera.",
                     thought=action.thought,
+                    play=action.play or None,
                 )
                 self.log.write(event)
                 self.broadcast(event)
@@ -266,6 +281,7 @@ class Simulation:
                         visibility=Visibility.PRIVATE.value,
                         text=f"{name} wanted {action.target} but they were busy.",
                         thought=action.thought,
+                        play=action.play or None,
                     )
                     self.log.write(event)
                     continue
@@ -283,6 +299,7 @@ class Simulation:
                 visibility=Visibility.PRIVATE.value,
                 text=action.content or f"{name} clocks the room and stays put.",
                 thought=action.thought,
+                play=action.play or None,
             )
             self.log.write(event)
 
@@ -311,7 +328,9 @@ class Simulation:
             state,
             f"{when.title()} {label} talk at the {location.value}. "
             f"Only {', '.join(names)} are here. The other group cannot hear this. "
-            "Clock the couples, swap intel, plan recoupling — this is for the £50,000.",
+            "Clock the couples, swap intel, plan recoupling"
+            + prize_nudge(self.settings.prize_emphasis, " — this is for the £50,000", "")
+            + "."
         )
         order = list(names)
         random.Random(state.day * 31 + hash((when, label))).shuffle(order)
@@ -323,8 +342,13 @@ class Simulation:
                 f"{label.upper()} TALK ({when}). Same-gender huddle. "
                 f"Here: {', '.join(names)}. Nobody of the other group can hear.\n"
                 f"Huddle so far:\n{recent}\n"
-                "Gossip, clock other couples, say who you'd recouple with, protect your shot at £50,000. "
-                f"type=speak, target MUST be one of: {', '.join(others)}."
+                "Gossip, clock other couples, say who you'd recouple with"
+                + prize_nudge(
+                    self.settings.prize_emphasis,
+                    ", protect your shot at £50,000. ",
+                    ". ",
+                )
+                + f"type=speak, target MUST be one of: {', '.join(others)}."
             )
             profile = self.profiles[name]
             action = self.decide(
@@ -349,10 +373,11 @@ class Simulation:
                 visibility=Visibility.LOCATION.value,
                 text=line,
                 thought=action.thought,
+                play=action.play or None,
             )
             self.log.write(event)
             self.broadcast(event)
-            apply_relationship_updates(state.islanders[name], action.relationship_updates)
+            note_chat(state, name, target, kind="huddle")
         record_moment(
             state,
             f"{when.title()} {label} talk at the {location.value}: " + " | ".join(transcript)[:280],
@@ -402,6 +427,7 @@ class Simulation:
             self.profiles,
             stub=self.settings.stub,
             model=None if self.settings.stub else self.settings.default_model,
+            settings=self.settings,
         )
         days = [d for d in self.schedule.days if d.day <= self.settings.season_days]
         for plan in days:

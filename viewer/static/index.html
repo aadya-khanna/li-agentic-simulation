@@ -60,6 +60,7 @@
     .tag.thought { color: var(--gold); }
     .event.thought { border-left: 3px solid var(--gold); padding-left: 0.5rem; }
     .thought { color: var(--gold); font-style: italic; font-size: 0.88rem; margin-top: 0.2rem; }
+    .play { color: #8fd9a8; font-style: italic; font-size: 0.84rem; margin-top: 0.1rem; }
     .hidden { display: none; }
     table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 0.75rem; }
     th, td { border-bottom: 1px solid var(--line); padding: 0.35rem 0.4rem; text-align: right; }
@@ -83,11 +84,12 @@
           <select id="day"></select>
         </label>
         <label><input type="checkbox" id="thoughts" checked /> Show private thoughts</label>
+        <label><input type="checkbox" id="plays" checked /> Show game-play</label>
         <label><input type="checkbox" id="whispers" checked /> Show whispers</label>
         <label><input type="checkbox" id="diary" checked /> Show diary room</label>
       </div>
       <div id="timeline"></div>
-      <h3>Attraction matrix</h3>
+      <h3>Who talked to whom</h3>
       <div id="matrix"></div>
     </main>
   </div>
@@ -97,7 +99,7 @@
     function visOk(ev, filters) {
       if (ev.kind === "whisper" && !filters.whispers) return false;
       if (ev.kind === "diary" && !filters.diary) return false;
-      if (ev.kind === "thought" && !filters.thoughts) return false;
+      if (ev.kind === "thought") return filters.thoughts;
       return true;
     }
 
@@ -111,6 +113,7 @@
         thoughts: $("thoughts").checked,
         whispers: $("whispers").checked,
         diary: $("diary").checked,
+        plays: $("plays").checked,
       };
 
       const islanders = state.islanders || {};
@@ -132,14 +135,16 @@
       }
       $("subtitle").textContent = `${events.length} logged beats · day ${state.day || "?"} · ${state.season_name || "season"}`;
 
-      const timeline = events.filter(e => e.day === day && visOk(e, filters));
+      const timeline = events.filter(e => e.day === day && visOk(e, filters) && e.kind !== "thought");
       $("timeline").innerHTML = timeline.map(e => {
         const who = e.target ? `${e.actor || "?"} → ${e.target}` : (e.actor || "");
-        const cls = e.kind === "thought" ? "event thought" : "event";
-        const line = e.kind === "thought"
-          ? `<span class="tag thought">thinks</span><strong>${e.actor || "?"}</strong> ${e.text || ""}`
-          : `<span class="tag">${e.kind}</span><strong>${who}</strong> ${e.text || ""}`;
-        return `<div class="${cls}">${line}</div>`;
+        const cls = "event";
+        const thought = (filters.thoughts && e.thought)
+          ? `<div class="thought">thinks: ${e.thought}</div>` : "";
+        const play = (filters.plays && e.play)
+          ? `<div class="play">play: ${e.play}</div>` : "";
+        const line = `<span class="tag">${e.kind}</span><strong>${who}</strong> ${e.text || ""}`;
+        return `<div class="${cls}">${line}${thought}${play}</div>`;
       }).join("") || "<p class='meta'>No events this day.</p>";
 
       if (!names.length) { $("matrix").innerHTML = ""; return; }
@@ -148,8 +153,8 @@
         html += `<tr><th>${row}</th>`;
         for (const col of names) {
           if (row === col) { html += "<td>—</td>"; continue; }
-          const rel = (((islanders[row] || {}).relationships) || {})[col];
-          html += `<td>${rel ? Math.round(rel.attraction) : ""}</td>`;
+          const log = (((islanders[row] || {}).contacts) || {})[col];
+          html += `<td>${log && (log.talks || log.whispers) ? `${log.talks || 0}/${log.whispers || 0}` : ""}</td>`;
         }
         html += "</tr>";
       }
@@ -163,7 +168,7 @@
         fetch("/api/state").then(r => r.json()),
       ]);
       const redraw = () => render(events, state);
-      ["day", "thoughts", "whispers", "diary"].forEach(id => $(id).addEventListener("change", redraw));
+      ["day", "thoughts", "plays", "whispers", "diary"].forEach(id => $(id).addEventListener("change", redraw));
       redraw();
     }
     boot().catch(err => { $("subtitle").textContent = "Could not load logs: " + err; });

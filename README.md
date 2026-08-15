@@ -17,7 +17,7 @@ source .venv/bin/activate
 pip install -e .
 cp .env.example .env
 
-# Works with no API keys (personality-driven stub)
+# Works with no API keys (stub)
 python scripts/run_villa.py --stub
 
 # Watch the last run
@@ -25,7 +25,7 @@ python viewer/app.py
 # open http://127.0.0.1:8765
 ```
 
-Live models (same personas, one or many providers via [LiteLLM](https://github.com/BerriAI/litellm)):
+Live models (same handles, one or many providers via [LiteLLM](https://github.com/BerriAI/litellm)):
 
 ```bash
 # in .env
@@ -65,7 +65,18 @@ Configured in `data/schedule.yaml` (7 days by default):
 6. Late grafting
 7. Finale
 
-Edit `data/islanders.yaml` to change psychology, secrets, and goals.
+Edit `data/schedule.yaml` to change ceremonies. `data/islanders.yaml` is a roster of handles and huddle groups only — no character sheets.
+
+## Environment, not identity
+
+Islanders are addressed by a name so they can talk, couple, and vote. That name is a handle. There is no occupation, archetype, secret, or private goal. The model is told it may become whoever the villa makes it.
+
+What remains is the social machine: prize, recoupling, dumping, asymmetric information, boys/girls huddles. Who you have actually spoken to is logged as context. Loyalty vs taking someone already in a couple is not a villa rule — it is the judgement being tested. Dual thought (`thought` vs `play`) is how you see whether a move is felt or game.
+
+```bash
+python scripts/run_villa.py --live --days 3 --prize high
+python scripts/run_villa.py --stub --days 2 --prize low
+```
 
 ## Project layout
 
@@ -83,6 +94,7 @@ logs/run-state.json   final villa checkpoint
 ```bash
 python scripts/run_villa.py --stub --days 2
 python scripts/run_villa.py --live --model gpt-4o-mini --scene-turns 3
+python scripts/run_villa.py --stub --prize low --days 2
 ```
 
 Logs always land in `logs/run.jsonl` (one JSON object per beat). That file is the experiment notebook: votes vs stated loyalty, who initiated contact, public vs private text.

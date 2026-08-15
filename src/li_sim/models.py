@@ -52,11 +52,11 @@ class Visibility(str, Enum):
 class Action(BaseModel):
     type: ActionType = ActionType.PASS
     thought: str = ""
+    play: str = ""
     target: str | None = None
     content: str | None = None
     location: Location | None = None
     challenge_effort: int | None = Field(default=None, ge=1, le=10)
-    relationship_updates: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class MemoryItem(BaseModel):
@@ -68,29 +68,17 @@ class MemoryItem(BaseModel):
     visibility: str = "location"
 
 
-class Relationship(BaseModel):
-    trust: float = 50.0
-    attraction: float = 50.0
-    threat: float = 20.0
-
-    def clamp(self) -> None:
-        self.trust = max(0.0, min(100.0, self.trust))
-        self.attraction = max(0.0, min(100.0, self.attraction))
-        self.threat = max(0.0, min(100.0, self.threat))
+class ContactLog(BaseModel):
+    talks: int = 0
+    whispers: int = 0
+    last_day: int = 0
+    last_phase: str = ""
+    last_kind: str = ""
 
 
 class IslanderProfile(BaseModel):
     name: str
-    age: int
     gender: str
-    hometown: str
-    occupation: str
-    speaking_style: str
-    values: dict[str, float]
-    private_goal: str
-    secrets: list[str] = Field(default_factory=list)
-    dealbreakers: list[str] = Field(default_factory=list)
-    archetype: str = ""
     model: str | None = None
     enters_on: int = 1
 
@@ -100,6 +88,7 @@ class InnerThought(BaseModel):
     phase: str
     tick: int = 0
     text: str
+    play: str = ""
     action: str = ""
     target: str | None = None
 
@@ -112,7 +101,7 @@ class IslanderState(BaseModel):
     memories: list[MemoryItem] = Field(default_factory=list)
     reflections: list[str] = Field(default_factory=list)
     inner_thoughts: list[InnerThought] = Field(default_factory=list)
-    relationships: dict[str, Relationship] = Field(default_factory=dict)
+    contacts: dict[str, ContactLog] = Field(default_factory=dict)
     last_thought: str = ""
     is_bombshell: bool = False
     entered_day: int = 1
@@ -161,6 +150,7 @@ class LogEvent(BaseModel):
     visibility: str = Visibility.PUBLIC.value
     text: str = ""
     thought: str | None = None
+    play: str | None = None
     extra: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -177,6 +167,8 @@ class VillaState(BaseModel):
     winner_couple: list[str] | None = None
     season_over: bool = False
     allowed_actions: list[str] = Field(default_factory=list)
+    prize_emphasis: str = "high"
+    dual_thought: bool = True
 
     def active(self) -> list[IslanderState]:
         return [i for i in self.islanders.values() if not i.dumped]

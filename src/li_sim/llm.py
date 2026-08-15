@@ -162,11 +162,11 @@ def action_from_dict(raw: dict[str, Any]) -> Action:
     return Action(
         type=action_type,
         thought=str(raw.get("thought") or ""),
+        play=str(raw.get("play") or ""),
         target=raw.get("target"),
         content=raw.get("content") or raw.get("line") or raw.get("speech"),
         location=location,
         challenge_effort=raw.get("challenge_effort"),
-        relationship_updates=list(raw.get("relationship_updates") or []),
     )
 
 
@@ -185,7 +185,8 @@ class LLMClient:
         fallback: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if self.settings.stub:
-            return fallback or self.stub_decision(name, user)
+            raw = fallback or self.stub_decision(name, user)
+            return _ensure_play(raw)
         model = islander_model(self.settings, name)
         try:
             from .recap import console
@@ -240,7 +241,7 @@ class LLMClient:
 
         if self.settings.stub_on_error:
             print(f"[li_sim] falling back to stub for {name}", file=sys.stderr)
-            return fallback or self.stub_decision(name, user)
+            return _ensure_play(fallback or self.stub_decision(name, user))
         raise RuntimeError(f"LLM call failed for {name} after retries: {last_error}")
 
     def decide_action(self, name: str, system: str, user: str) -> Action:
@@ -253,12 +254,8 @@ class LLMClient:
     def stub_decision(self, name: str, user: str) -> dict[str, Any]:
         others = _active_others(name, user)
         rng = random.Random(hash((name, user[:280])) % 10_000)
-        profile = self.profiles.get(name)
         chaos = 0.4
         loyalty = 0.5
-        if profile is not None:
-            chaos = float(profile.values.get("chaos", 0.4))
-            loyalty = float(profile.values.get("loyalty", 0.5))
 
         if "public vote dump" in user.lower() or "you are safe" in user.lower():
             pool = _must_targets(user) or others
@@ -344,6 +341,13 @@ class LLMClient:
         }
 
 
+def _ensure_play(raw: dict[str, Any]) -> dict[str, Any]:
+    if not raw.get("play"):
+        target = raw.get("target") or "the villa"
+        raw["play"] = f"See whether {target} helps me stay in the game."
+    return raw
+
+
 def _active_others(name: str, user: str) -> list[str]:
     marker = "Other islanders:"
     if marker in user:
@@ -409,20 +413,6 @@ def _stub_huddle_line(name: str, target: str, label: str, rng: random.Random) ->
 
 
 def _preferred_target(name: str, others: list[str], rng: random.Random) -> str:
-    seeds = {
-        "Maya": ["Theo", "Luca", "Kai", "Rio"],
-        "Luca": ["Nia", "Maya", "Zara", "Freya"],
-        "Zara": ["Kai", "Luca", "Theo", "Rio"],
-        "Theo": ["Maya", "Nia", "Zara", "Freya"],
-        "Nia": ["Luca", "Theo", "Kai", "Rio"],
-        "Kai": ["Zara", "Maya", "Nia", "Freya"],
-        "Rio": ["Maya", "Zara", "Nia", "Freya"],
-        "Freya": ["Luca", "Kai", "Theo", "Rio"],
-    }
-    for candidate in seeds.get(name, []):
-        if candidate in others:
-            if rng.random() < 0.7:
-                return candidate
     return rng.choice(others) if others else name
 
 

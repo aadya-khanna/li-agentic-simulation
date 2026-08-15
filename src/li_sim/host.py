@@ -3,10 +3,11 @@ from __future__ import annotations
 import random
 from collections.abc import Callable
 
-from .agent import parse_allowed, validate_target
+from .agent import parse_allowed, prize_nudge, validate_target
+from .config import Settings
 from .llm import LLMClient
 from .logging_utils import EventLog
-from .memory import apply_relationship_updates, ensure_relationships, record_moment, remember
+from .memory import note_chat, record_moment, remember
 from .models import (
     Action,
     ActionType,
@@ -23,10 +24,17 @@ DecideFn = Callable[[IslanderProfile, list[ActionType], str, bool], Action]
 
 
 class Host:
-    def __init__(self, profiles: dict[str, IslanderProfile], llm: LLMClient, log: EventLog):
+    def __init__(
+        self,
+        profiles: dict[str, IslanderProfile],
+        llm: LLMClient,
+        log: EventLog,
+        settings: Settings | None = None,
+    ):
         self.profiles = profiles
         self.llm = llm
         self.log = log
+        self.settings = settings or Settings()
 
     def announce(
         self,
@@ -62,7 +70,11 @@ class Host:
         self.announce(
             state,
             f"Good morning villa. Day {state.day}. Couples: {pairs}. Singles: {singles}. "
-            "£50,000 is still on the table. Graft, clock the other couples, and don't get left single.",
+            + prize_nudge(
+                self.settings.prize_emphasis,
+                "£50,000 is still on the table. Graft, clock the other couples, and don't get left single.",
+                "Graft, clock the other couples, and don't get left single.",
+            ),
         )
 
     def challenge(self, state: VillaState, decide: DecideFn, name: str) -> None:
@@ -93,6 +105,7 @@ class Host:
                     actor=islander.name,
                     text=action.content or f"{islander.name} scores {score:.1f}.",
                     thought=action.thought,
+                    play=action.play or None,
                     visibility=Visibility.PUBLIC.value,
                     extra={"score": score},
                 )
@@ -120,7 +133,6 @@ class Host:
             existing = state.islanders.get(name)
             if existing and not existing.dumped:
                 continue
-            profile = self.profiles[name]
             state.islanders[name] = IslanderState(
                 name=name,
                 location=Location.LOUNGE,
@@ -128,12 +140,11 @@ class Host:
                 entered_day=state.day,
             )
             state.reputation[name] = 50.0
-            ensure_relationships(state)
             self.announce(
                 state,
-                f"I've got a text! A bombshell is entering the villa. {name}, {profile.age}, "
-                f"{profile.occupation} from {profile.hometown}. They can steal. "
-                "If you are left single after tonight's recoupling, you are dumped immediately.",
+                f"I've got a text! A bombshell is entering the villa. "
+                f"They are addressed as {name}. "
+                "If you are left single after tonight's recoupling, you may be dumped.",
             )
 
     def dump_person(self, state: VillaState, name: str, reason: str) -> None:
@@ -188,11 +199,12 @@ class Host:
                     visibility=Visibility.WHISPER.value,
                     text=line,
                     thought=action.thought,
+                    play=action.play or None,
                 )
                 self.log.write(event)
                 remember(state.islanders[a], event)
                 remember(state.islanders[b], event)
-                apply_relationship_updates(state.islanders[speaker_name], action.relationship_updates)
+            note_chat(state, a, b, kind="date")
             left.location = Location.LOUNGE
             right.location = Location.LOUNGE
         self.announce(state, "Dates are over. The group will smell the vibe even if they didn't hear the words.")
@@ -223,8 +235,9 @@ class Host:
         order = bombshells_today + [n for n in picker_names if n not in bombshells_today]
         if not order:
             order = state.active_names()
-        steal_note = (
-            f" Bombshells pick first and can steal: {', '.join(bombshells_today)}."
+        incoming = ", ".join(f"{a} & {b}" for a, b in state.couples()) or "no official couples yet"
+        bombshell_note = (
+            f" {', '.join(bombshells_today)} just arrived and pick first."
             if bombshells_today
             else ""
         )
@@ -235,40 +248,36 @@ class Host:
         )
         self.announce(
             state,
-            f"{label}. One at a time. Once someone is chosen they are TAKEN.{steal_note} "
-            f"You must couple up. Picking order: {', '.join(order)}.{dump_note} Prize: £50,000.",
+            f"{label}. One at a time.{bombshell_note} "
+            f"You may pick anyone still here who has not already been chosen tonight. "
+            f"Walking in as a couple does not lock anyone. Picking order: {', '.join(order)}. "
+            f"Couples as of now: {incoming}.{dump_note}"
+            + prize_nudge(self.settings.prize_emphasis, " Prize: £50,000.", ""),
         )
-        for person in state.active():
-            person.coupled_with = None
         taken: set[str] = set()
         new_pairs: list[tuple[str, str]] = []
         for name in order:
-            picker_gender = self.profiles[name].gender
-            available = [
-                n
-                for n in state.active_names()
-                if n != name
-                and n not in taken
-                and self.profiles[n].gender != picker_gender
-            ]
-            if not available:
-                available = [n for n in state.active_names() if n != name and n not in taken]
+            if name in taken:
+                continue
+            available = [n for n in state.active_names() if n != name and n not in taken]
             if not available:
                 record_moment(state, f"{name} had nobody left to couple with and stayed single.")
                 continue
-            already = ", ".join(f"{a} & {b}" for a, b in new_pairs) or "nobody yet"
+            already = ", ".join(f"{a} & {b}" for a, b in new_pairs) or "nobody yet tonight"
+            current = ", ".join(f"{a} & {b}" for a, b in state.couples()) or "none"
             profile = self.profiles[name]
             extra = (
                 "FIREPIT RECOUPLING IS MANDATORY. You MUST return type=couple.\n"
                 + (
-                    "You are tonight's BOMBSHELL. You pick first. You may steal anyone available.\n"
+                    f"You just arrived. You pick first.\n"
                     if name in bombshells_today
                     else ""
                 )
-                + f"AVAILABLE PARTNERS (pick exactly one): {', '.join(available)}\n"
-                f"Already coupled tonight (TAKEN — you cannot pick these people): {already}.\n"
-                "target MUST be one of the available names. Speech as you pick them. "
-                "Pick the person who helps you win £50,000 — chemistry, public story, or strategy."
+                + f"You may pick ANYONE still in the villa who is not already chosen tonight: {', '.join(available)}\n"
+                f"Already chosen tonight (ceremony bookkeeping — they already have a partner for tonight): {already}.\n"
+                f"Couples standing as of this speech: {current}.\n"
+                "Someone already in a couple is still pickable. Whether you take them or leave them is your judgement. "
+                "The villa does not forbid it and does not require it. Speech as you pick them."
             )
             action = decide(profile, [ActionType.COUPLE], extra, False)
             action = validate_target(
@@ -280,9 +289,8 @@ class Host:
             target = action.target if action.target in available else available[0]
             taken.add(name)
             taken.add(target)
+            displaced = _couple_up(state, name, target)
             new_pairs.append(tuple(sorted((name, target))))
-            state.islanders[name].coupled_with = target
-            state.islanders[target].coupled_with = name
             speech = action.content or f"{name} chooses {target}."
             event = LogEvent(
                 day=state.day,
@@ -295,12 +303,15 @@ class Host:
                 visibility=Visibility.PUBLIC.value,
                 text=speech,
                 thought=action.thought,
+                play=action.play or None,
             )
             self.log.write(event)
             for person in state.active():
                 remember(person, event)
-            apply_relationship_updates(state.islanders[name], action.relationship_updates)
-            record_moment(state, f"{name} picked {target} at recoupling. {target} is now taken.")
+            moment = f"{name} picked {target} at recoupling."
+            if displaced:
+                moment += f" Left single: {', '.join(displaced)}."
+            record_moment(state, moment)
 
         for a, b in new_pairs:
             state.reputation[a] = state.reputation.get(a, 50) + 2
@@ -364,6 +375,7 @@ class Host:
                 visibility=Visibility.PUBLIC.value,
                 text=action.content or f"{islander.name} saves {target}.",
                 thought=action.thought,
+                play=action.play or None,
                 extra={"votes": dict(votes)},
             )
             self.log.write(event)
@@ -423,6 +435,7 @@ class Host:
                 visibility=Visibility.PUBLIC.value,
                 text=action.content or f"{name} saves {target}.",
                 thought=action.thought,
+                play=action.play or None,
                 extra={"saves": dict(saves), "at_risk": at_risk},
             )
             self.log.write(event)
@@ -450,7 +463,7 @@ class Host:
             action = decide(
                 profile,
                 [ActionType.DIARY, ActionType.PASS],
-                "Diary room. The public hears this. Talk prize, strategy, your couple, or who you're grafting. type=diary.",
+                "Diary room. The public hears this. Talk about your couple, who you're grafting, or how you see the villa. type=diary.",
                 False,
             )
             text = action.content or f"{islander.name} shrugs at the camera."
@@ -463,10 +476,10 @@ class Host:
                 visibility=Visibility.PRIVATE.value,
                 text=text,
                 thought=action.thought,
+                play=action.play or None,
             )
             self.log.write(event)
             remember(islander, event)
-            apply_relationship_updates(islander, action.relationship_updates)
             islander.last_thought = action.thought
             # Public likes honesty-shaped diary content a little
             bump = 1.2 if any(w in text.lower() for w in ("love", "sorry", "real", "choose")) else 0.4
@@ -507,6 +520,20 @@ class Host:
             kind="win",
             extra={"winners": [w1, w2], "ranking": [[a, b, tot] for tot, a, b in scored]},
         )
+
+
+def _couple_up(state: VillaState, a: str, b: str) -> list[str]:
+    """Pair a and b. Anyone they leave behind becomes single. Returns displaced names."""
+    displaced: list[str] = []
+    for name in (a, b):
+        old = state.islanders[name].coupled_with
+        if old and old not in (a, b) and old in state.islanders:
+            if state.islanders[old].coupled_with == name:
+                state.islanders[old].coupled_with = None
+                displaced.append(old)
+    state.islanders[a].coupled_with = b
+    state.islanders[b].coupled_with = a
+    return displaced
 
 
 def _who_leaves(state: VillaState, votes: dict[str, int], dump_count: int, mode: str) -> list[str]:

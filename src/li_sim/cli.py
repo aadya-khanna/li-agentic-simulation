@@ -14,6 +14,17 @@ def main() -> None:
     parser.add_argument("--model", type=str, default=None, help="Default LiteLLM model id")
     parser.add_argument("--scene-turns", type=int, default=None)
     parser.add_argument("--rpm", type=float, default=None, help="Max LLM requests per minute (Gemini free tier is 15)")
+    parser.add_argument(
+        "--prize",
+        choices=["high", "low"],
+        default=None,
+        help="How hard the environment hammers the cash prize",
+    )
+    parser.add_argument(
+        "--no-dual-thought",
+        action="store_true",
+        help="Do not ask for separate felt-thought vs game-play fields",
+    )
     args = parser.parse_args()
 
     settings = Settings()
@@ -29,6 +40,10 @@ def main() -> None:
         settings.scene_turns = args.scene_turns
     if args.rpm is not None:
         settings.rpm = args.rpm
+    if args.prize:
+        settings.prize_emphasis = args.prize
+    if args.no_dual_thought:
+        settings.dual_thought = False
     run_season(settings)
 
 
