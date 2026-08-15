@@ -1,0 +1,43 @@
+{
+  "name": "villa-logs",
+  "version": "0.1.0",
+  "status": "planned",
+  "description": "Read Love Island simulation run logs and checkpoint state",
+  "tools": [
+    {
+      "name": "list_events",
+      "description": "Return filtered events from logs/run.jsonl",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "day": { "type": "integer" },
+          "kind": { "type": "string" },
+          "actor": { "type": "string" },
+          "limit": { "type": "integer", "default": 50 }
+        }
+      }
+    },
+    {
+      "name": "get_state",
+      "description": "Return parsed logs/run-state.json",
+      "inputSchema": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "contact_matrix",
+      "description": "Summarize islander.contacts talk/whisper counts",
+      "inputSchema": { "type": "object", "properties": {} }
+    }
+  ],
+  "resources": [
+    {
+      "uri": "villa://logs/run.jsonl",
+      "name": "Event tape",
+      "mimeType": "application/x-ndjson"
+    },
+    {
+      "uri": "villa://logs/run-state.json",
+      "name": "Checkpoint",
+      "mimeType": "application/json"
+    }
+  ]
+}

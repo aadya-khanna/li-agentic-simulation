@@ -1,0 +1,38 @@
+# Tool registry for coding agents working on this repo.
+# Each entry maps to bash-accessible operations (general-purpose tool strategy).
+
+version: 1
+tools:
+  - id: run_stub_season
+    description: Run a full stub season without API keys. Writes logs/run.jsonl.
+    command: python scripts/run_villa.py --stub --days {days}
+    params:
+      days: { type: integer, default: 1 }
+
+  - id: run_live_season
+    description: Run season with live LLM (requires .env keys). Use sparingly.
+    command: python scripts/run_villa.py --live --days {days}
+    params:
+      days: { type: integer, default: 3 }
+
+  - id: validate_harness
+    description: Run hooks + evals. Required before finishing prompt/host/model changes.
+    command: ./harness/hooks/validate.sh
+
+  - id: run_evals
+    description: Run invariant evals without full hook chain.
+    command: python harness/evals/run_all.py
+
+  - id: view_logs
+    description: Start local viewer for last run checkpoint and event tape.
+    command: python viewer/app.py
+
+  - id: load_profiles
+    description: Smoke-import roster YAML and validate pydantic models.
+    command: python -c "from li_sim.engine import load_profiles, load_schedule; load_profiles(); load_schedule(); print('ok')"
+
+  - id: tail_events
+    description: Print last N lines of run.jsonl as JSON.
+    command: tail -n {n} logs/run.jsonl
+    params:
+      n: { type: integer, default: 20 }

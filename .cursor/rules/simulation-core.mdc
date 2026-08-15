@@ -1,0 +1,13 @@
+---
+description: Simulation core — environment-driven agents, no personas or relationship scores
+globs: src/li_sim/**/*.py,data/**/*.yaml
+alwaysApply: false
+---
+
+# Simulation core
+
+- Islander identity is open handles only (`handle_block` in `agent.py`).
+- Context for decisions: memories, major moments, contact log — not numeric relationship matrices.
+- Recoupling: anyone in villa may be picked except already chosen tonight; taking coupled islanders is moral judgement.
+- Dual thought: separate `thought` (felt) and `play` (game) in prompts and logs.
+- Ceremony logic belongs in `host.py`; shared constitution in `agent.py` `world_rules()`.

@@ -1,0 +1,12 @@
+---
+description: Harness layer conventions — AGENTS.md, hooks, evals, subagents
+alwaysApply: true
+---
+
+# Harness
+
+- Canonical rules: `AGENTS.md` (keep short; earn each line), `CLAUDE.md` always under 200 lines. Lean is Best.
+- Before finishing changes to `src/li_sim/` or `data/`: run `./harness/hooks/validate.sh`.
+- Repeatable agent failures → add eval in `harness/evals/` or rule in `AGENTS.md`.
+- Subagent specs live in `harness/agents/` — use the narrowest role.
+- MCP specs are plans in `harness/mcp/` until implemented.

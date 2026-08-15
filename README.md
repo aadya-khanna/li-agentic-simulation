@@ -81,13 +81,26 @@ python scripts/run_villa.py --stub --days 2 --prize low
 ## Project layout
 
 ```
-data/                 profiles + schedule
+data/                 roster handles + schedule
 src/li_sim/           engine, host, agents, memory, recap, web API
+harness/              agent harness (hooks, evals, subagents, MCP specs)
+AGENTS.md             coding-agent rulebook (injected every session)
 scripts/run_villa.py  CLI season runner
-viewer/               timeline + relationship matrix
+viewer/               timeline + talk matrix
 logs/run.jsonl        full event tape
 logs/run-state.json   final villa checkpoint
 ```
+
+## Harness (coding agents)
+
+Scaffolding for agents working on this repo — prompts, tools, hooks, evals. See `harness/README.md`.
+
+```bash
+./harness/hooks/validate.sh    # run before PR / after prompt or host changes
+python harness/evals/run_all.py
+```
+
+Read `AGENTS.md` and `CLAUDE.md` at repo root.
 
 ## CLI
 
