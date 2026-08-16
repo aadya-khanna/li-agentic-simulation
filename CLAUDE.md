@@ -25,4 +25,4 @@ Read **`AGENTS.md`** first — it is the canonical rulebook for every coding age
 python scripts/run_villa.py --stub --days 1
 ```
 
-Logs land in `logs/run.jsonl`. Use the viewer or `harness/tools/inspect-logs.md` to read them.
+Logs land under `logs/experiments/<experiment>/<condition>/<run>/`. The viewer reads `logs/latest.json` by default. See `harness/context/experiment-protocol.md`.

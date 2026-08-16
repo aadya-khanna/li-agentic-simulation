@@ -19,7 +19,8 @@ python viewer/app.py                                 # replay logs at :8765
 | `src/li_sim/` | Engine, host ceremonies, islander prompts, memory, LLM |
 | `data/islanders.yaml` | Roster handles only (name, gender, enters_on) |
 | `data/schedule.yaml` | Ceremony timing — environment determinism |
-| `logs/run.jsonl` | Experiment tape (`thought`, `play`, public `content`) |
+| `logs/experiments/<id>/<condition>/<run>/` | Experiment tape (`events.jsonl`, `decisions.jsonl`, `state.json`, `manifest.json`) |
+| `logs/latest.json` | Pointer to the most recent run (viewer default) |
 | `harness/` | Harness layer: agents, tools, MCP specs, hooks, evals |
 
 ## Research invariants (do not regress)

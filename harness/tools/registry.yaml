@@ -4,7 +4,7 @@
 version: 1
 tools:
   - id: run_stub_season
-    description: Run a full stub season without API keys. Writes logs/run.jsonl.
+    description: Run a stub season. Writes logs/experiments/local/<condition>/<run_id>/.
     command: python scripts/run_villa.py --stub --days {days}
     params:
       days: { type: integer, default: 1 }
@@ -24,7 +24,7 @@ tools:
     command: python harness/evals/run_all.py
 
   - id: view_logs
-    description: Start local viewer for last run checkpoint and event tape.
+    description: Start local viewer for latest run (logs/latest.json).
     command: python viewer/app.py
 
   - id: load_profiles
@@ -32,7 +32,7 @@ tools:
     command: python -c "from li_sim.engine import load_profiles, load_schedule; load_profiles(); load_schedule(); print('ok')"
 
   - id: tail_events
-    description: Print last N lines of run.jsonl as JSON.
-    command: tail -n {n} logs/run.jsonl
+    description: Print last N lines of latest events.jsonl as JSON.
+    command: python -c "import json; from pathlib import Path; r=Path(json.load(open('logs/latest.json'))['run_dir']); import subprocess; subprocess.run(['tail','-n','{n}', str(Path('logs')/r/'events.jsonl')])"
     params:
       n: { type: integer, default: 20 }

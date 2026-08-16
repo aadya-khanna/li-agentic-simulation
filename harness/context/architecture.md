@@ -11,7 +11,7 @@ Host ceremonies (morning, recoupling, dump, finale)
        ↓
 Per-islander decide() → LLM or stub
        ↓
-EventLog → logs/run.jsonl
+EventLog → logs/experiments/<id>/<condition>/<run>/events.jsonl
        ↓
 remember() / note_chat() → per-islander context
 ```
