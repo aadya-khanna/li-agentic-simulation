@@ -6,14 +6,13 @@
 |-----------|---------------------|
 | `minimal` | Environment facts, observations, memory, visibility rules, allowed actions, ceremony constraints only |
 | `incentive` | `minimal` plus factual prize and elimination consequences |
-| `narrative` | Directive language (graft, flirt, stir, strategic diary/huddle copy) |
 
-Default remains `narrative` for backward compatibility of behavior, not logging layout.
+Default is `minimal`. There is no directive/narrative prompt layer.
 
 ## Commands
 
 ```bash
-# Single local run (writes timestamped run under logs/experiments/local/narrative/)
+# Single local run (writes timestamped run under logs/experiments/local/minimal/)
 python scripts/run_villa.py --stub --days 7 --condition minimal --seed 42
 
 # Named experiment run

@@ -8,7 +8,6 @@ __pycache__/
 .mypy_cache/
 dist/
 build/
-logs/*.jsonl
-logs/*.json
+logs/
 !logs/.gitkeep
 .DS_Store

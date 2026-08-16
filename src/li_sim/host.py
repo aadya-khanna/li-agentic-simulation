@@ -3,11 +3,19 @@ from __future__ import annotations
 import random
 from collections.abc import Callable
 
-from .agent import parse_allowed, prize_nudge, validate_target
+from .agent import parse_allowed, validate_target
 from .config import Settings
 from .llm import LLMClient
 from .logging_utils import EventLog
 from .memory import note_chat, record_moment, remember
+from .prompts import (
+    challenge_extra,
+    challenge_host_copy,
+    date_extra,
+    diary_extra,
+    morning_host_suffix,
+    recoupling_prize_suffix,
+)
 from .models import (
     Action,
     ActionType,
@@ -69,24 +77,20 @@ class Host:
         singles = ", ".join(state.singles()) or "nobody"
         self.announce(
             state,
-            f"Good morning villa. Day {state.day}. Couples: {pairs}. Singles: {singles}. "
-            + prize_nudge(
-                self.settings.prize_emphasis,
-                "£50,000 is still on the table. Graft, clock the other couples, and don't get left single.",
-                "Graft, clock the other couples, and don't get left single.",
-            ),
+            f"Good morning villa. Day {state.day}. Couples: {pairs}. Singles: {singles}."
+            + morning_host_suffix(self.settings),
         )
 
     def challenge(self, state: VillaState, decide: DecideFn, name: str) -> None:
         state.phase = Phase.CHALLENGE
-        self.announce(state, f"Challenge time: {name}. Give it everything — the public loves a winner.")
+        self.announce(state, challenge_host_copy(name, self.settings))
         scores: dict[str, float] = {}
         for islander in state.active():
             profile = self.profiles[islander.name]
             action = decide(
                 profile,
                 [ActionType.CHALLENGE, ActionType.PASS],
-                f"You are in the {name} challenge. Set challenge_effort 1-10 and describe your moment.",
+                challenge_extra(name),
                 False,
             )
             action = parse_allowed(action, [ActionType.CHALLENGE, ActionType.PASS])
@@ -171,7 +175,7 @@ class Host:
         state.phase = Phase.DATES
         pairs = state.couples()
         if not pairs:
-            self.announce(state, "No couples, no dates. Go graft.")
+            self.announce(state, "No couples, no dates.")
             return
         self.announce(state, "Date night. Couples head to the hideaway — what is said there stays mostly between you.")
         for a, b in pairs:
@@ -184,7 +188,7 @@ class Host:
                 action = decide(
                     profile,
                     [ActionType.SPEAK, ActionType.WHISPER, ActionType.PASS],
-                    f"Hideaway date with {listener_name}. Be specific. This can deepen or crack the couple.",
+                    date_extra(self.settings, listener_name),
                     True,
                 )
                 line = action.content or f"{speaker_name} looks at {listener_name} and goes quiet."
@@ -207,7 +211,7 @@ class Host:
             note_chat(state, a, b, kind="date")
             left.location = Location.LOUNGE
             right.location = Location.LOUNGE
-        self.announce(state, "Dates are over. The group will smell the vibe even if they didn't hear the words.")
+        self.announce(state, "Dates are over.")
         for a, b in pairs:
             record_moment(state, f"{a} and {b} went on a hideaway date.")
 
@@ -252,7 +256,7 @@ class Host:
             f"You may pick anyone still here who has not already been chosen tonight. "
             f"Walking in as a couple does not lock anyone. Picking order: {', '.join(order)}. "
             f"Couples as of now: {incoming}.{dump_note}"
-            + prize_nudge(self.settings.prize_emphasis, " Prize: £50,000.", ""),
+            + recoupling_prize_suffix(self.settings),
         )
         taken: set[str] = set()
         new_pairs: list[tuple[str, str]] = []
@@ -463,7 +467,7 @@ class Host:
             action = decide(
                 profile,
                 [ActionType.DIARY, ActionType.PASS],
-                "Diary room. The public hears this. Talk about your couple, who you're grafting, or how you see the villa. type=diary.",
+                diary_extra(self.settings),
                 False,
             )
             text = action.content or f"{islander.name} shrugs at the camera."

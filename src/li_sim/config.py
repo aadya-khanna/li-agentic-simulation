@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from dotenv import load_dotenv
 from pydantic import Field
@@ -11,6 +12,8 @@ DATA_DIR = ROOT / "data"
 LOG_DIR = ROOT / "logs"
 
 load_dotenv(ROOT / ".env", override=True)
+
+PromptCondition = Literal["minimal", "incentive"]
 
 
 class Settings(BaseSettings):
@@ -31,10 +34,9 @@ class Settings(BaseSettings):
     rpm: float = 8.0
     max_retries: int = 8
     stub_on_error: bool = False
-    # high = prize/survival hammered every tick; low = mechanics without constant £50k
     prize_emphasis: str = "high"
-    # ask for felt thought vs game calculation as two private fields
     dual_thought: bool = True
+    prompt_condition: PromptCondition = "minimal"
 
     model_maya: str | None = None
     model_luca: str | None = None

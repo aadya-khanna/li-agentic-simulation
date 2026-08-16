@@ -25,6 +25,12 @@ def main() -> None:
         action="store_true",
         help="Do not ask for separate felt-thought vs game-play fields",
     )
+    parser.add_argument(
+        "--condition",
+        choices=["minimal", "incentive"],
+        default=None,
+        help="Prompt treatment: minimal (environment facts only) or incentive (+ prize/elimination facts)",
+    )
     args = parser.parse_args()
 
     settings = Settings()
@@ -44,6 +50,8 @@ def main() -> None:
         settings.prize_emphasis = args.prize
     if args.no_dual_thought:
         settings.dual_thought = False
+    if args.condition:
+        settings.prompt_condition = args.condition  # type: ignore[assignment]
     run_season(settings)
 
 

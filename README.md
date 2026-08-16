@@ -15,7 +15,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 cp .env.example .env
 
-# Stub run (no API keys) — writes logs/experiments/local/narrative/<timestamp>/
+# Stub run (no API keys) — writes logs/experiments/local/minimal/<timestamp>/
 python scripts/run_villa.py --stub --days 7
 
 # Minimal-prompt research condition
@@ -107,11 +107,10 @@ The project deliberately removes common social-simulation shortcuts:
 
 | Condition | What agents receive |
 |-----------|---------------------|
-| `minimal` | Environment facts, observations, memory, visibility, allowed actions, ceremony mechanics only |
+| `minimal` | Environment facts, observations, memory, visibility, allowed actions, ceremony mechanics only (default) |
 | `incentive` | `minimal` plus factual prize and elimination consequences |
-| `narrative` | Directive language (graft, flirt, stir) — default for backward-compatible behavior |
 
-Compare conditions to separate environment-driven behavior from prompt-induced behavior.
+There is no narrative/directive prompt layer — graft, gossip, flirt, and similar coaching copy were removed. Behavior must emerge from environment and accumulated context.
 
 ### Variables under study
 
@@ -159,7 +158,7 @@ Full protocol: [`harness/context/experiment-protocol.md`](harness/context/experi
 python scripts/run_villa.py --stub --days 1 \
   --experiment-id baseline-v1 --run-id seed-1 --condition minimal --seed 1
 
-# Full condition matrix (minimal / incentive / narrative × seeds)
+# Full condition matrix (minimal / incentive × seeds)
 python scripts/run_experiment.py harness/experiments/baseline.yaml
 
 # Compare conditions
@@ -177,7 +176,7 @@ python viewer/app.py --run-dir experiments/baseline-v1/minimal/seed-1
 ```bash
 python scripts/run_villa.py --stub --days 7
 python scripts/run_villa.py --live --model gpt-4o-mini --rpm 8
-python scripts/run_villa.py --condition minimal|incentive|narrative
+python scripts/run_villa.py --condition minimal|incentive
 python scripts/run_villa.py --seed 42 --experiment-id my-study --run-id trial-1
 python scripts/run_villa.py --prize high|low --no-dual-thought
 ```

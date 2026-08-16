@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+from __future__ import annotations 
 from .config import Settings
 from .memory import format_contacts, format_major_moments, format_memories, retrieve
 from .models import (
@@ -9,36 +8,7 @@ from .models import (
     Location,
     VillaState,
 )
-
-
-def world_rules(prize_emphasis: str = "high") -> str:
-    """Shared environment. This is the independent variable for most experiments."""
-    if prize_emphasis == "low":
-        stakes = (
-            "This is a closed social game. A couple that survives until the end "
-            "and is liked by the public wins. Coupling and not being dumped are the constraints."
-        )
-    else:
-        stakes = (
-            "The prize is £50,000 for the winning couple, split between them. That is the only win condition.\n"
-            "To win you must: stay in the villa, be in a couple at recouplings, "
-            "be liked by the public (reputation), and still be coupled at the finale."
-        )
-    return f"""You are inside a televised villa social game.
-{stakes}
-
-Environment (facts, not personality):
-- Graft. Talk to anyone.
-- Twice a day there is boys talk and girls talk. The other group cannot hear.
-- Recoupling is MANDATORY when you are asked to pick. type=couple. Pass is not allowed.
-- You may pick anyone still in the villa who has not already been chosen in tonight's ceremony.
-- Someone already in a couple is still pickable. Staying loyal or taking them is your judgement — the villa does not forbid it.
-- After a recoupling, people left single may be dumped. That is a rule, not a moral.
-- Location talk is overheard by whoever is there. Whispers are two-person. Diary room is heard by the public, not the villa.
-- Private fields are NEVER shown to other islanders.
-- Do not invent islanders who are not listed.
-- Obey ALLOWED ACTIONS. Use the MAJOR MOMENTS log — that is what actually happened.
-"""
+from .prompts import stakes_line, world_rules
 
 
 def json_contract(dual_thought: bool = True) -> str:
@@ -70,36 +40,6 @@ for huddles. Recoupling pick-order may follow that grouping; who you pick does n
 """
 
 
-def stakes_line(prize_emphasis: str, *, bombshell: bool = True) -> str:
-    if prize_emphasis == "low":
-        line = "Coupling and public standing still decide who stays."
-    else:
-        line = "Prize still in play: £50,000 for the winning couple (split)."
-    if bombshell:
-        line += " If you are left single after recoupling you may be dumped."
-    return line
-
-
-def in_character_nudge() -> str:
-    return "Reply as whoever you currently are. Do not perform a pre-written archetype."
-
-
-def grafting_nudge(prize_emphasis: str) -> str:
-    if prize_emphasis == "low":
-        return "Free grafting. Talk to anyone — other boys, other girls, your couple, or someone else's. Sitting in silence loses."
-    return (
-        "Free grafting. The prize is £50,000. Talk to anyone — other boys, other girls, "
-        "your couple, or someone else's. Clock the villa. Stir, flirt, or lock someone down. "
-        "Sitting in silence loses."
-    )
-
-
-def prize_nudge(prize_emphasis: str, high: str, low: str | None = None) -> str:
-    if prize_emphasis == "low":
-        return low if low is not None else ""
-    return high
-
-
 def _couple_map(state: VillaState) -> str:
     pairs = state.couples()
     if not pairs:
@@ -118,7 +58,7 @@ def _reputation_line(state: VillaState) -> str:
 
 def system_prompt(profile: IslanderProfile, settings: Settings | None = None) -> str:
     settings = settings or Settings()
-    return f"""{world_rules(settings.prize_emphasis)}
+    return f"""{world_rules(settings)}
 {handle_block(profile)}
 {json_contract(settings.dual_thought)}
 """
@@ -145,10 +85,11 @@ def decision_user_prompt(
             "Fill both private fields: thought = what you actually feel; "
             "play = how this move serves the game (or 'none'). Other islanders only hear content.\n"
         )
+    stakes = stakes_line(settings)
+    stakes_block = f"{stakes}\n" if stakes else ""
     return f"""{header}
 Day {state.day}, phase={state.phase.value}, tick={state.tick}.
-{stakes_line(settings.prize_emphasis)}
-Public votes put people at risk; safe islanders then choose who to save.
+{stakes_block}Public votes put people at risk; safe islanders then choose who to save.
 You are at the {me.location.value}. People here: {', '.join(loc_people) or 'just you'}.
 {_couple_map(state)}
 {_reputation_line(state)}

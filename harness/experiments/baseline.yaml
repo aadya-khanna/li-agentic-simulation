@@ -1,0 +1,12 @@
+experiment_id: baseline-v1
+conditions:
+  - minimal
+  - incentive
+seeds:
+  - 1
+  - 2
+  - 3
+days: 1
+stub: true
+prize_emphasis: high
+resume: true

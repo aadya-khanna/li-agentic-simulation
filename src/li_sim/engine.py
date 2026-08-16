@@ -8,10 +8,7 @@ import yaml
 from .agent import (
     WORLD_ACTIONS,
     decision_user_prompt,
-    grafting_nudge,
-    in_character_nudge,
     parse_allowed,
-    prize_nudge,
     system_prompt,
     validate_target,
 )
@@ -35,6 +32,7 @@ from .models import (
     VillaState,
     Visibility,
 )
+from .prompts import grafting_extra, huddle_extra, huddle_host_announce, scene_reply_extra
 from .recap import print_day, print_finale, print_open
 
 
@@ -180,10 +178,7 @@ class Simulation:
             actor = target if beat % 2 == 1 else speaker
             other = speaker if actor == target else target
             profile = self.profiles[actor]
-            extra = (
-                f"SCENE REPLY. {other} just said: {last_line!r}. "
-                f"{in_character_nudge()} type=speak, target={other}."
-            )
+            extra = scene_reply_extra(self.settings, other, last_line)
             action = self.decide(
                 profile,
                 [ActionType.SPEAK, ActionType.WHISPER, ActionType.PASS],
@@ -233,7 +228,7 @@ class Simulation:
             if name in busy or state.islanders[name].dumped:
                 continue
             profile = self.profiles[name]
-            extra = grafting_nudge(self.settings.prize_emphasis)
+            extra = grafting_extra(self.settings)
             action = self.decide(profile, WORLD_ACTIONS, extra, False)
             me = state.islanders[name]
             me.last_thought = action.thought
@@ -300,7 +295,7 @@ class Simulation:
                 kind="pass",
                 actor=name,
                 visibility=Visibility.PRIVATE.value,
-                text=action.content or f"{name} clocks the room and stays put.",
+                text=action.content or f"{name} stays put.",
                 thought=action.thought,
                 play=action.play or None,
             )
@@ -329,11 +324,13 @@ class Simulation:
             return
         self.host.announce(
             state,
-            f"{when.title()} {label} talk at the {location.value}. "
-            f"Only {', '.join(names)} are here. The other group cannot hear this. "
-            "Clock the couples, swap intel, plan recoupling"
-            + prize_nudge(self.settings.prize_emphasis, " — this is for the £50,000", "")
-            + "."
+            huddle_host_announce(
+                self.settings,
+                when=when,
+                label=label,
+                location=location,
+                names=names,
+            ),
         )
         order = list(names)
         random.Random(state.day * 31 + hash((when, label))).shuffle(order)
@@ -341,17 +338,13 @@ class Simulation:
         for name in order:
             others = [n for n in names if n != name]
             recent = "\n".join(transcript[-6:]) or "(you're opening the huddle)"
-            extra = (
-                f"{label.upper()} TALK ({when}). Same-gender huddle. "
-                f"Here: {', '.join(names)}. Nobody of the other group can hear.\n"
-                f"Huddle so far:\n{recent}\n"
-                "Gossip, clock other couples, say who you'd recouple with"
-                + prize_nudge(
-                    self.settings.prize_emphasis,
-                    ", protect your shot at £50,000. ",
-                    ". ",
-                )
-                + f"type=speak, target MUST be one of: {', '.join(others)}."
+            extra = huddle_extra(
+                self.settings,
+                label=label,
+                when=when,
+                names=names,
+                others=others,
+                recent=recent,
             )
             profile = self.profiles[name]
             action = self.decide(

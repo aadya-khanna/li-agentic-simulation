@@ -18,7 +18,7 @@ Toggle private thoughts, game-play, whispers, diary.
 cat logs/latest.json
 
 # Event count
-wc -l logs/experiments/local/narrative/*/events.jsonl
+wc -l logs/experiments/local/minimal/*/events.jsonl
 
 # Last 5 events (pretty)
 RUN=$(python -c "import json; print(json.load(open('logs/latest.json'))['run_dir'])")
