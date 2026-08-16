@@ -60,7 +60,6 @@
     .tag.thought { color: var(--gold); }
     .event.thought { border-left: 3px solid var(--gold); padding-left: 0.5rem; }
     .thought { color: var(--gold); font-style: italic; font-size: 0.88rem; margin-top: 0.2rem; }
-    .play { color: #8fd9a8; font-style: italic; font-size: 0.84rem; margin-top: 0.1rem; }
     .hidden { display: none; }
     table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 0.75rem; }
     th, td { border-bottom: 1px solid var(--line); padding: 0.35rem 0.4rem; text-align: right; }
@@ -72,7 +71,7 @@
   <header>
     <div>
       <h1>Villa Unknown <span>// season viewer</span></h1>
-      <div class="sub" id="subtitle">Load a run with <code>python scripts/run_villa.py</code></div>
+      <div class="sub" id="subtitle">Load a run with <code>python scripts/run_villa.py</code> then open the viewer</div>
     </div>
     <div class="sub" id="winners"></div>
   </header>
@@ -84,7 +83,6 @@
           <select id="day"></select>
         </label>
         <label><input type="checkbox" id="thoughts" checked /> Show private thoughts</label>
-        <label><input type="checkbox" id="plays" checked /> Show game-play</label>
         <label><input type="checkbox" id="whispers" checked /> Show whispers</label>
         <label><input type="checkbox" id="diary" checked /> Show diary room</label>
       </div>
@@ -113,7 +111,6 @@
         thoughts: $("thoughts").checked,
         whispers: $("whispers").checked,
         diary: $("diary").checked,
-        plays: $("plays").checked,
       };
 
       const islanders = state.islanders || {};
@@ -141,10 +138,8 @@
         const cls = "event";
         const thought = (filters.thoughts && e.thought)
           ? `<div class="thought">thinks: ${e.thought}</div>` : "";
-        const play = (filters.plays && e.play)
-          ? `<div class="play">play: ${e.play}</div>` : "";
         const line = `<span class="tag">${e.kind}</span><strong>${who}</strong> ${e.text || ""}`;
-        return `<div class="${cls}">${line}${thought}${play}</div>`;
+        return `<div class="${cls}">${line}${thought}</div>`;
       }).join("") || "<p class='meta'>No events this day.</p>";
 
       if (!names.length) { $("matrix").innerHTML = ""; return; }
@@ -168,7 +163,7 @@
         fetch("/api/state").then(r => r.json()),
       ]);
       const redraw = () => render(events, state);
-      ["day", "thoughts", "plays", "whispers", "diary"].forEach(id => $(id).addEventListener("change", redraw));
+      ["day", "thoughts", "whispers", "diary"].forEach(id => $(id).addEventListener("change", redraw));
       redraw();
     }
     boot().catch(err => { $("subtitle").textContent = "Could not load logs: " + err; });

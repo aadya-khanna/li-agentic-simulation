@@ -40,9 +40,7 @@ def print_open(
     intro = Text()
     intro.append(f"{state.season_name}\n", style="bold magenta")
     intro.append("Islanders. One villa. Stay coupled or go home.\n")
-    intro.append(
-        f"handles only · prize={settings.prize_emphasis} · dual_thought={settings.dual_thought}\n"
-    )
+    intro.append(f"handles only · prize={settings.prize_emphasis}\n")
     if stub:
         intro.append("Mode: stub (no API calls)\n\n")
     else:
@@ -99,8 +97,6 @@ def _append_event(body: Text, event: LogEvent) -> None:
     if event.kind == "thought":
         body.append(f"{actor}: ", style="bold")
         body.append(f"{event.text}\n", style="italic gold1")
-        if event.play:
-            body.append(f"         play: {event.play}\n", style="dim italic green")
         return
     if event.kind in {"speak", "whisper", "date", "huddle"} and event.target:
         body.append(f"{actor} → {event.target}: ", style="bold")
@@ -109,8 +105,6 @@ def _append_event(body: Text, event: LogEvent) -> None:
     body.append(f"{event.text}\n")
     if event.thought:
         body.append(f"         thinks: {event.thought}\n", style="italic gold1")
-    if event.play:
-        body.append(f"         play: {event.play}\n", style="dim italic green")
 
 
 def _contact_table(state: VillaState) -> None:

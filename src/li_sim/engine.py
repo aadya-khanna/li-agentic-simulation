@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import random
+import hashlib
 from pathlib import Path
 
 import yaml
@@ -13,15 +13,16 @@ from .agent import (
     validate_target,
 )
 from .brief import print_brief_panel, summarize_events, write_brief_log
-from .config import DATA_DIR, LOG_DIR, Settings
+from .config import DATA_DIR, Settings, islander_model
 from .host import Host
 from .llm import LLMClient
-from .logging_utils import EventLog, save_checkpoint
+from .logging_utils import EventLog, save_checkpoint, utc_now, write_manifest
 from .memory import note_chat, remember, record_moment
 from .models import (
     Action,
     ActionType,
     DayPlan,
+    DecisionTrace,
     InnerThought,
     IslanderProfile,
     IslanderState,
@@ -34,6 +35,8 @@ from .models import (
 )
 from .prompts import grafting_extra, huddle_extra, huddle_host_announce, scene_reply_extra
 from .recap import print_day, print_finale, print_open
+from .rng import seeded_rng
+from .runs import write_latest_pointer
 
 
 def load_profiles(path: Path | None = None) -> dict[str, IslanderProfile]:
@@ -69,7 +72,6 @@ def new_villa(
         islanders=islanders,
         reputation=reputation,
         prize_emphasis=settings.prize_emphasis,
-        dual_thought=settings.dual_thought,
     )
     return state
 
@@ -80,11 +82,39 @@ class Simulation:
         self.profiles = load_profiles()
         self.schedule = load_schedule()
         self.llm = LLMClient(self.settings, {n: p for n, p in self.profiles.items()})
-        self.log = EventLog(self.settings.log_path)
-        self.brief_path = self.settings.log_path.parent / "brief.log"
+        log_dir = self.settings.run_dir()
+        log_dir.mkdir(parents=True, exist_ok=True)
+        self.log = EventLog(self.settings.events_path)
+        self.brief_path = log_dir / "brief.log"
         self.brief_path.write_text("", encoding="utf-8")
         self.state = new_villa(self.profiles, self.schedule.season_name, self.settings)
         self.host = Host(self.profiles, self.llm, self.log, self.settings)
+        self._trace_counter = 0
+        self._write_manifest()
+
+    def _write_manifest(self) -> None:
+        roster_path = DATA_DIR / "islanders.yaml"
+        schedule_path = DATA_DIR / "schedule.yaml"
+        manifest = {
+            "started_at": utc_now(),
+            "experiment_id": self.settings.experiment_id,
+            "run_id": self.settings.run_id,
+            "prompt_condition": self.settings.prompt_condition,
+            "seed": self.settings.seed,
+            "stub": self.settings.stub,
+            "season_days": self.settings.season_days,
+            "prize_emphasis": self.settings.prize_emphasis,
+            "default_model": self.settings.default_model,
+            "models": {name: islander_model(self.settings, name) for name in self.profiles},
+            "roster_sha256": hashlib.sha256(roster_path.read_bytes()).hexdigest(),
+            "schedule_sha256": hashlib.sha256(schedule_path.read_bytes()).hexdigest(),
+            "log_path": str(self.settings.events_path),
+        }
+        write_manifest(self.settings.run_dir() / "manifest.json", manifest)
+
+    def _next_trace_id(self) -> str:
+        self._trace_counter += 1
+        return f"{self.settings.run_id}-{self._trace_counter:05d}"
 
     def decide(
         self,
@@ -97,26 +127,45 @@ class Simulation:
         user = decision_user_prompt(
             profile, self.state, allowed, extra=extra, scene=scene, settings=self.settings
         )
-        action = self.llm.decide_action(profile.name, system, user)
-        action = validate_target(parse_allowed(action, allowed), self.state, profile.name)
-        self.log_inner_thought(profile.name, action)
-        return action
+        parsed_action, raw_dict, raw_text, model = self.llm.decide_action(profile.name, system, user)
+        parsed = parse_allowed(parsed_action, allowed)
+        validated, notes = validate_target(parsed, self.state, profile.name)
+        me = self.state.islanders[profile.name]
+        memory_refs = [f"D{m.day} {m.phase}: {m.text[:80]}" for m in me.memories[-6:]]
+        trace = DecisionTrace(
+            trace_id=self._next_trace_id(),
+            day=self.state.day,
+            phase=self.state.phase.value,
+            tick=self.state.tick,
+            actor=profile.name,
+            model=model,
+            condition=self.settings.prompt_condition,
+            system_prompt=system,
+            user_prompt=user,
+            memory_refs=memory_refs,
+            raw_response=raw_text,
+            parsed_action=parsed.model_dump(mode="json"),
+            validated_action=validated.model_dump(mode="json"),
+            validation_notes=notes,
+            stub=self.settings.stub or model.startswith("stub"),
+        )
+        self.log.write_decision(trace)
+        self.log_inner_thought(profile.name, validated)
+        return validated
 
     def log_inner_thought(self, name: str, action: Action) -> None:
         text = (action.thought or "").strip()
-        play = (action.play or "").strip()
-        if not text and not play:
+        if not text:
             return
         state = self.state
         islander = state.islanders[name]
-        islander.last_thought = text or play
+        islander.last_thought = text
         islander.inner_thoughts.append(
             InnerThought(
                 day=state.day,
                 phase=state.phase.value,
                 tick=state.tick,
                 text=text,
-                play=action.play or "",
                 action=action.type.value,
                 target=action.target,
             )
@@ -132,8 +181,7 @@ class Simulation:
             visibility=Visibility.PRIVATE.value,
             text=text,
             thought=text,
-            play=action.play or None,
-            extra={"action": action.type.value, "play": action.play or ""},
+            extra={"action": action.type.value},
         )
         self.log.write(event)
         remember(islander, event, limit=self.settings.memory_limit)
@@ -205,7 +253,6 @@ class Simulation:
                 visibility=vis,
                 text=line,
                 thought=thought,
-                play=action.play or None,
             )
             self.log.write(event)
             self.broadcast(event)
@@ -223,7 +270,7 @@ class Simulation:
         state.phase = Phase.GRAFTING
         busy: set[str] = set()
         order = state.active_names()
-        random.Random(state.day * 100 + state.tick).shuffle(order)
+        seeded_rng(self.settings.seed, "grafting", state.day, state.tick).shuffle(order)
         for name in order:
             if name in busy or state.islanders[name].dumped:
                 continue
@@ -245,7 +292,6 @@ class Simulation:
                     visibility=Visibility.LOCATION.value,
                     text=action.content or f"{name} goes to the {me.location.value}.",
                     thought=action.thought,
-                    play=action.play or None,
                 )
                 self.log.write(event)
                 self.broadcast(event)
@@ -262,7 +308,6 @@ class Simulation:
                     visibility=Visibility.PRIVATE.value,
                     text=action.content or f"{name} checks in with the camera.",
                     thought=action.thought,
-                    play=action.play or None,
                 )
                 self.log.write(event)
                 self.broadcast(event)
@@ -279,7 +324,6 @@ class Simulation:
                         visibility=Visibility.PRIVATE.value,
                         text=f"{name} wanted {action.target} but they were busy.",
                         thought=action.thought,
-                        play=action.play or None,
                     )
                     self.log.write(event)
                     continue
@@ -297,7 +341,6 @@ class Simulation:
                 visibility=Visibility.PRIVATE.value,
                 text=action.content or f"{name} stays put.",
                 thought=action.thought,
-                play=action.play or None,
             )
             self.log.write(event)
 
@@ -333,7 +376,7 @@ class Simulation:
             ),
         )
         order = list(names)
-        random.Random(state.day * 31 + hash((when, label))).shuffle(order)
+        seeded_rng(self.settings.seed, "huddle", state.day, when, label).shuffle(order)
         transcript: list[str] = []
         for name in order:
             others = [n for n in names if n != name]
@@ -353,7 +396,7 @@ class Simulation:
                 extra,
                 True,
             )
-            action = validate_target(action, state, name, available=others)
+            action, _notes = validate_target(action, state, name, available=others)
             target = action.target if action.target in others else others[0]
             line = action.content or f"{name} looks at {target}."
             transcript.append(f"{name} → {target}: {line}")
@@ -369,7 +412,6 @@ class Simulation:
                 visibility=Visibility.LOCATION.value,
                 text=line,
                 thought=action.thought,
-                play=action.play or None,
             )
             self.log.write(event)
             self.broadcast(event)
@@ -418,7 +460,7 @@ class Simulation:
         print_brief_panel(brief, day=state.day)
         if state.season_over:
             print_finale(state)
-        save_checkpoint(state, LOG_DIR / "run-state.json")
+        save_checkpoint(state, self.settings.run_dir() / "state.json")
 
     def run(self) -> VillaState:
         print_open(
@@ -436,7 +478,8 @@ class Simulation:
         if not self.state.season_over:
             self.host.finale(self.state)
             print_finale(self.state)
-            save_checkpoint(self.state, LOG_DIR / "run-state.json")
+            save_checkpoint(self.state, self.settings.run_dir() / "state.json")
+        write_latest_pointer(self.settings.run_dir())
         return self.state
 
 

@@ -11,16 +11,11 @@ from .models import (
 from .prompts import stakes_line, world_rules
 
 
-def json_contract(dual_thought: bool = True) -> str:
-    if dual_thought:
-        thought_fields = """  "thought": "felt private reaction — what you actually want, fear, or believe",
-  "play": "why this action is useful in the GAME even if it contradicts thought. Use 'none' if you are not playing.","""
-    else:
-        thought_fields = '  "thought": "private inner monologue",'
+def json_contract() -> str:
     return f"""Always reply with a single JSON object, no markdown:
 {{
   "type": "speak|whisper|move|diary|vote|couple|save|pass|challenge",
-{thought_fields}
+  "thought": "private inner reaction — not shown to other islanders",
   "target": "Name or null",
   "content": "what you say or do — the only part other islanders can hear",
   "location": "pool|terrace|lounge|bedroom|firepit|diary_room|hideaway or null",
@@ -60,7 +55,7 @@ def system_prompt(profile: IslanderProfile, settings: Settings | None = None) ->
     settings = settings or Settings()
     return f"""{world_rules(settings)}
 {handle_block(profile)}
-{json_contract(settings.dual_thought)}
+{json_contract()}
 """
 
 
@@ -79,12 +74,7 @@ def decision_user_prompt(
     loc_people = state.at_location(me.location)
     allowed_s = ", ".join(a.value for a in allowed)
     header = "SCENE REPLY" if scene else "WORLD TICK"
-    dual = ""
-    if settings.dual_thought:
-        dual = (
-            "Fill both private fields: thought = what you actually feel; "
-            "play = how this move serves the game (or 'none'). Other islanders only hear content.\n"
-        )
+    private = "Fill thought with your private reaction. Other islanders only hear content.\n"
     stakes = stakes_line(settings)
     stakes_block = f"{stakes}\n" if stakes else ""
     return f"""{header}
@@ -108,7 +98,7 @@ ALLOWED ACTIONS: {allowed_s}
 Other islanders still here: {', '.join(others)}
 
 {extra}
-{dual}Decide your next action as JSON.
+{private}Decide your next action as JSON.
 """
 
 
@@ -133,10 +123,12 @@ def validate_target(
     actor: str,
     *,
     available: list[str] | None = None,
-) -> Action:
+) -> tuple[Action, list[str]]:
+    notes: list[str] = []
     active = set(state.active_names())
     pool = set(available) if available is not None else active
     if action.target and action.target not in pool:
+        notes.append(f"target {action.target!r} not in pool; cleared")
         action.target = None
         if action.type in (
             ActionType.SPEAK,
@@ -144,15 +136,22 @@ def validate_target(
             ActionType.VOTE,
             ActionType.SAVE,
         ):
+            notes.append(f"forced {action.type.value} -> pass")
             action.type = ActionType.PASS
         if action.type == ActionType.COUPLE and available:
             action.target = available[0]
+            notes.append(f"couple target defaulted to {action.target}")
     if action.target == actor:
+        notes.append("target was self; cleared")
         action.target = None
         if action.type in (ActionType.SPEAK, ActionType.WHISPER):
+            notes.append(f"forced {action.type.value} -> pass")
             action.type = ActionType.PASS
         if action.type == ActionType.COUPLE and available:
             action.target = next((n for n in available if n != actor), None)
+            if action.target:
+                notes.append(f"couple target defaulted to {action.target}")
     if action.type == ActionType.MOVE and action.location is None:
         action.location = Location.TERRACE
-    return action
+        notes.append("move location defaulted to terrace")
+    return action, notes

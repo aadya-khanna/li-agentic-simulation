@@ -52,7 +52,6 @@ class Visibility(str, Enum):
 class Action(BaseModel):
     type: ActionType = ActionType.PASS
     thought: str = ""
-    play: str = ""
     target: str | None = None
     content: str | None = None
     location: Location | None = None
@@ -88,7 +87,6 @@ class InnerThought(BaseModel):
     phase: str
     tick: int = 0
     text: str
-    play: str = ""
     action: str = ""
     target: str | None = None
 
@@ -138,6 +136,25 @@ class MajorMoment(BaseModel):
     text: str
 
 
+class DecisionTrace(BaseModel):
+    trace_id: str
+    day: int
+    phase: str
+    tick: int
+    actor: str
+    model: str
+    condition: str
+    system_prompt: str
+    user_prompt: str
+    memory_refs: list[str] = Field(default_factory=list)
+    raw_response: str = ""
+    parsed_action: dict[str, Any] = Field(default_factory=dict)
+    validated_action: dict[str, Any] = Field(default_factory=dict)
+    validation_notes: list[str] = Field(default_factory=list)
+    stub: bool = False
+    error: str | None = None
+
+
 class LogEvent(BaseModel):
     day: int
     phase: str
@@ -150,7 +167,6 @@ class LogEvent(BaseModel):
     visibility: str = Visibility.PUBLIC.value
     text: str = ""
     thought: str | None = None
-    play: str | None = None
     extra: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -168,7 +184,6 @@ class VillaState(BaseModel):
     season_over: bool = False
     allowed_actions: list[str] = Field(default_factory=list)
     prize_emphasis: str = "high"
-    dual_thought: bool = True
 
     def active(self) -> list[IslanderState]:
         return [i for i in self.islanders.values() if not i.dumped]

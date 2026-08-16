@@ -9,5 +9,5 @@ alwaysApply: false
 - Islander identity is open handles only (`handle_block` in `agent.py`).
 - Context for decisions: memories, major moments, contact log — not numeric relationship matrices.
 - Recoupling: anyone in villa may be picked except already chosen tonight; taking coupled islanders is moral judgement.
-- Dual thought: separate `thought` (felt) and `play` (game) in prompts and logs.
+- Private thought: single `thought` field in prompts and logs, separate from public `content`.
 - Ceremony logic belongs in `host.py`; shared constitution in `agent.py` `world_rules()`.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -14,6 +15,10 @@ LOG_DIR = ROOT / "logs"
 load_dotenv(ROOT / ".env", override=True)
 
 PromptCondition = Literal["minimal", "incentive"]
+
+
+def _default_run_id() -> str:
+    return datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
 
 
 class Settings(BaseSettings):
@@ -35,8 +40,10 @@ class Settings(BaseSettings):
     max_retries: int = 8
     stub_on_error: bool = False
     prize_emphasis: str = "high"
-    dual_thought: bool = True
     prompt_condition: PromptCondition = "minimal"
+    seed: int = 0
+    experiment_id: str = "local"
+    run_id: str = Field(default_factory=_default_run_id)
 
     model_maya: str | None = None
     model_luca: str | None = None
@@ -45,7 +52,12 @@ class Settings(BaseSettings):
     model_nia: str | None = None
     model_kai: str | None = None
 
-    log_path: Path = Field(default_factory=lambda: LOG_DIR / "run.jsonl")
+    def run_dir(self) -> Path:
+        return LOG_DIR / "experiments" / self.experiment_id / self.prompt_condition / self.run_id
+
+    @property
+    def events_path(self) -> Path:
+        return self.run_dir() / "events.jsonl"
 
 
 def islander_model(settings: Settings, name: str) -> str:

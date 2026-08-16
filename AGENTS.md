@@ -28,7 +28,7 @@ python viewer/app.py                                 # replay logs at :8765
 - **Open identity:** names are handles; no occupation, archetype, secrets, or private goals.
 - **No relationship maths:** no trust/attraction/threat scores; use talk history (`contacts`) + memories.
 - **Recoupling morality:** anyone still in the villa may be picked; taking someone already coupled is agent judgement, not a host-enforced rule. Only ceremony bookkeeping: already chosen *tonight* is unavailable.
-- **Dual thought:** prompts and logs separate felt `thought` from strategic `play`.
+- **Private thought:** prompts and logs a private `thought` field separate from public `content`.
 - **Shared constitution:** `world_rules()` + `handle_block()` in `src/li_sim/agent.py` — every islander gets the same environment text.
 
 ## Editing guide

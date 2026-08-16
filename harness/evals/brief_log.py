@@ -9,14 +9,15 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from li_sim.brief import load_events_from_path, summarize_events  # noqa: E402
+from li_sim.runs import resolve_run_dir  # noqa: E402
 
 
 def run() -> None:
-    log_path = ROOT / "logs" / "harness-smoke.jsonl"
-    if not log_path.exists():
-        raise AssertionError("run smoke_season first or missing harness-smoke.jsonl")
+    events_path = resolve_run_dir() / "events.jsonl"
+    if not events_path.exists():
+        raise AssertionError(f"missing events tape: {events_path}")
 
-    events = load_events_from_path(log_path)
+    events = load_events_from_path(events_path)
     assert events, "empty event tape"
 
     brief = summarize_events(events)

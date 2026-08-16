@@ -12,6 +12,7 @@ from typing import Any
 
 from .config import Settings, islander_model
 from .models import Action, ActionType, Location
+from .rng import derive_seed, seeded_rng
 
 
 def _api_key_for_model(model: str) -> str | None:
@@ -162,7 +163,6 @@ def action_from_dict(raw: dict[str, Any]) -> Action:
     return Action(
         type=action_type,
         thought=str(raw.get("thought") or ""),
-        play=str(raw.get("play") or ""),
         target=raw.get("target"),
         content=raw.get("content") or raw.get("line") or raw.get("speech"),
         location=location,
@@ -183,11 +183,11 @@ class LLMClient:
         user: str,
         *,
         fallback: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], str, str]:
+        model = islander_model(self.settings, name)
         if self.settings.stub:
             raw = fallback or self.stub_decision(name, user)
-            return _ensure_play(raw)
-        model = islander_model(self.settings, name)
+            return raw, json.dumps(raw), "stub"
         try:
             from .recap import console
         except Exception:
@@ -224,7 +224,7 @@ class LLMClient:
                         temperature=self.settings.temperature,
                         max_tokens=self.settings.max_tokens,
                     )
-                return parse_json_object(text)
+                return parse_json_object(text), text, model
             except GeminiRateLimitError as exc:
                 last_error = exc
                 wait_for = max(exc.retry_after, 60.0)
@@ -241,19 +241,21 @@ class LLMClient:
 
         if self.settings.stub_on_error:
             print(f"[li_sim] falling back to stub for {name}", file=sys.stderr)
-            return _ensure_play(fallback or self.stub_decision(name, user))
+            payload = fallback or self.stub_decision(name, user)
+            return payload, json.dumps(payload), "stub-fallback"
         raise RuntimeError(f"LLM call failed for {name} after retries: {last_error}")
 
-    def decide_action(self, name: str, system: str, user: str) -> Action:
-        raw = self.complete_json(name, system, user)
+    def decide_action(self, name: str, system: str, user: str) -> tuple[Action, dict[str, Any], str, str]:
+        raw, text, model = self.complete_json(name, system, user)
         try:
-            return action_from_dict(raw)
+            return action_from_dict(raw), raw, text, model
         except Exception:
-            return Action(type=ActionType.PASS, thought="Couldn't lock in a move.")
+            action = Action(type=ActionType.PASS, thought="Couldn't lock in a move.")
+            return action, raw, text, model
 
     def stub_decision(self, name: str, user: str) -> dict[str, Any]:
         others = _active_others(name, user)
-        rng = random.Random(hash((name, user[:280])) % 10_000)
+        rng = seeded_rng(self.settings.seed, "stub", name, user[:280])
         chaos = 0.4
         loyalty = 0.5
 
@@ -339,13 +341,6 @@ class LLMClient:
             "target": target,
             "content": _stub_line(name, target, rng, chaos),
         }
-
-
-def _ensure_play(raw: dict[str, Any]) -> dict[str, Any]:
-    if not raw.get("play"):
-        target = raw.get("target") or "the villa"
-        raw["play"] = f"See whether {target} helps me stay in the game."
-    return raw
 
 
 def _active_others(name: str, user: str) -> list[str]:

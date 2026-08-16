@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import random
 from collections.abc import Callable
 
 from .agent import parse_allowed, validate_target
@@ -16,6 +15,7 @@ from .prompts import (
     morning_host_suffix,
     recoupling_prize_suffix,
 )
+from .rng import seeded_rng
 from .models import (
     Action,
     ActionType,
@@ -95,7 +95,7 @@ class Host:
             )
             action = parse_allowed(action, [ActionType.CHALLENGE, ActionType.PASS])
             effort = action.challenge_effort or 6
-            jitter = random.Random(state.day * 17 + hash(islander.name)).uniform(-1.0, 1.5)
+            jitter = seeded_rng(self.settings.seed, "challenge", state.day, islander.name).uniform(-1.0, 1.5)
             score = max(1.0, min(10.0, effort + jitter))
             scores[islander.name] = score
             state.challenge_scores[islander.name] = state.challenge_scores.get(islander.name, 0) + score
@@ -109,7 +109,6 @@ class Host:
                     actor=islander.name,
                     text=action.content or f"{islander.name} scores {score:.1f}.",
                     thought=action.thought,
-                    play=action.play or None,
                     visibility=Visibility.PUBLIC.value,
                     extra={"score": score},
                 )
@@ -203,7 +202,6 @@ class Host:
                     visibility=Visibility.WHISPER.value,
                     text=line,
                     thought=action.thought,
-                    play=action.play or None,
                 )
                 self.log.write(event)
                 remember(state.islanders[a], event)
@@ -284,8 +282,9 @@ class Host:
                 "The villa does not forbid it and does not require it. Speech as you pick them."
             )
             action = decide(profile, [ActionType.COUPLE], extra, False)
-            action = validate_target(
-                parse_allowed(action, [ActionType.COUPLE]),
+            parsed = parse_allowed(action, [ActionType.COUPLE])
+            action, _notes = validate_target(
+                parsed,
                 state,
                 name,
                 available=available,
@@ -307,7 +306,6 @@ class Host:
                 visibility=Visibility.PUBLIC.value,
                 text=speech,
                 thought=action.thought,
-                play=action.play or None,
             )
             self.log.write(event)
             for person in state.active():
@@ -360,8 +358,9 @@ class Host:
                 "Popularity dump. Vote to SAVE someone (not yourself). type=save or vote, target=name.",
                 False,
             )
-            action = validate_target(
-                parse_allowed(action, [ActionType.SAVE, ActionType.VOTE, ActionType.PASS]),
+            parsed = parse_allowed(action, [ActionType.SAVE, ActionType.VOTE, ActionType.PASS])
+            action, _notes = validate_target(
+                parsed,
                 state,
                 islander.name,
             )
@@ -379,7 +378,6 @@ class Host:
                 visibility=Visibility.PUBLIC.value,
                 text=action.content or f"{islander.name} saves {target}.",
                 thought=action.thought,
-                play=action.play or None,
                 extra={"votes": dict(votes)},
             )
             self.log.write(event)
@@ -420,8 +418,9 @@ class Host:
                 "The at-risk islander with the fewest save votes is dumped."
             )
             action = decide(profile, [ActionType.SAVE, ActionType.VOTE], extra, False)
-            action = validate_target(
-                parse_allowed(action, [ActionType.SAVE, ActionType.VOTE]),
+            parsed = parse_allowed(action, [ActionType.SAVE, ActionType.VOTE])
+            action, _notes = validate_target(
+                parsed,
                 state,
                 name,
                 available=at_risk,
@@ -439,7 +438,6 @@ class Host:
                 visibility=Visibility.PUBLIC.value,
                 text=action.content or f"{name} saves {target}.",
                 thought=action.thought,
-                play=action.play or None,
                 extra={"saves": dict(saves), "at_risk": at_risk},
             )
             self.log.write(event)
@@ -480,7 +478,6 @@ class Host:
                 visibility=Visibility.PRIVATE.value,
                 text=text,
                 thought=action.thought,
-                play=action.play or None,
             )
             self.log.write(event)
             remember(islander, event)

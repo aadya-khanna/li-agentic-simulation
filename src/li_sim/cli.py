@@ -21,16 +21,14 @@ def main() -> None:
         help="How hard the environment hammers the cash prize",
     )
     parser.add_argument(
-        "--no-dual-thought",
-        action="store_true",
-        help="Do not ask for separate felt-thought vs game-play fields",
-    )
-    parser.add_argument(
         "--condition",
         choices=["minimal", "incentive"],
         default=None,
         help="Prompt treatment: minimal (environment facts only) or incentive (+ prize/elimination facts)",
     )
+    parser.add_argument("--seed", type=int, default=None, help="Deterministic engine seed")
+    parser.add_argument("--experiment-id", type=str, default=None, help="Experiment folder name")
+    parser.add_argument("--run-id", type=str, default=None, help="Run folder name within experiment")
     args = parser.parse_args()
 
     settings = Settings()
@@ -48,10 +46,14 @@ def main() -> None:
         settings.rpm = args.rpm
     if args.prize:
         settings.prize_emphasis = args.prize
-    if args.no_dual_thought:
-        settings.dual_thought = False
     if args.condition:
         settings.prompt_condition = args.condition  # type: ignore[assignment]
+    if args.seed is not None:
+        settings.seed = args.seed
+    if args.experiment_id:
+        settings.experiment_id = args.experiment_id
+    if args.run_id:
+        settings.run_id = args.run_id
     run_season(settings)
 
 

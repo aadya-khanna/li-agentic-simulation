@@ -14,8 +14,7 @@ from li_sim.engine import Simulation  # noqa: E402
 
 
 def run() -> None:
-    settings = Settings(stub=True, season_days=1)
-    settings.log_path = ROOT / "logs" / "harness-smoke.jsonl"
+    settings = Settings(stub=True, season_days=1, experiment_id="harness-smoke", run_id="smoke")
     sim = Simulation(settings)
     state = sim.run()
 
@@ -25,18 +24,19 @@ def run() -> None:
     assert "host" in kinds, "missing host announcements"
     assert any(k in kinds for k in ("speak", "huddle", "couple_choice")), "missing social beats"
 
-    # Log schema sanity on a thought-bearing event
-    thought_events = [e for e in events if e.thought or e.play]
-    assert thought_events, "expected dual-track fields on at least one event"
+    thought_events = [e for e in events if e.thought]
+    assert thought_events, "expected private thought on at least one event"
 
-    # Checkpoint written
-    checkpoint = ROOT / "logs" / "run-state.json"
-    assert checkpoint.exists(), "run-state.json not written"
+    checkpoint = settings.run_dir() / "state.json"
+    assert checkpoint.exists(), "state.json not written"
     data = json.loads(checkpoint.read_text(encoding="utf-8"))
     assert "islanders" in data
     sample = next(iter(data["islanders"].values()))
     assert "contacts" in sample, "checkpoint missing contacts (talk history)"
     assert "relationships" not in sample, "checkpoint still has relationship scores"
+    assert (settings.run_dir() / "events.jsonl").exists()
+    assert (settings.run_dir() / "manifest.json").exists()
+    assert (settings.run_dir() / "decisions.jsonl").exists()
 
     assert state.day == 1
     assert len(state.active_names()) >= 2, "villa emptied unexpectedly on day 1"
