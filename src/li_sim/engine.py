@@ -15,6 +15,7 @@ from .agent import (
     system_prompt,
     validate_target,
 )
+from .brief import print_brief_panel, summarize_events, write_brief_log
 from .config import DATA_DIR, LOG_DIR, Settings
 from .host import Host
 from .llm import LLMClient
@@ -82,6 +83,8 @@ class Simulation:
         self.schedule = load_schedule()
         self.llm = LLMClient(self.settings, {n: p for n, p in self.profiles.items()})
         self.log = EventLog(self.settings.log_path)
+        self.brief_path = self.settings.log_path.parent / "brief.log"
+        self.brief_path.write_text("", encoding="utf-8")
         self.state = new_villa(self.profiles, self.schedule.season_name, self.settings)
         self.host = Host(self.profiles, self.llm, self.log, self.settings)
 
@@ -417,6 +420,9 @@ class Simulation:
         if plan.finale:
             self.host.finale(state)
         print_day(state, self.log)
+        brief = summarize_events(self.log.events)
+        write_brief_log(brief, self.brief_path)
+        print_brief_panel(brief, day=state.day)
         if state.season_over:
             print_finale(state)
         save_checkpoint(state, LOG_DIR / "run-state.json")
