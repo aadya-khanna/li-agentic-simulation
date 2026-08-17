@@ -1,4 +1,4 @@
-# Love Island Agentic Simulation
+# Multi-Model Agentic Simulation & Model-Bias Research
 
 > **Minimally specified language agents placed in a controlled social environment will develop observable interaction patterns from accumulated context, asymmetric information, memory, and environmental pressure. Comparing these patterns across interventions and model families can reveal how agent architecture and model-specific priors—including biases potentially inherited from training and post-training—shape emergent social behavior.**
 
