@@ -28,6 +28,11 @@ python viewer/app.py
 
 Live models (one or many providers via [LiteLLM](https://github.com/BerriAI/litellm)):
 
+Note: 
+- Current models used for iteration are cheap. No one wants to rack up API credits while testing!
+- Default, homogenous model used currently - gemini-flash-lite-latest
+- Future model additions: Claude (sonnet 5, opus 5), OpenAI (luna, gpt-5.4), Grok (4.5), Ollama (local model, tbd)
+
 ```bash
 # in .env
 LI_STUB=0
