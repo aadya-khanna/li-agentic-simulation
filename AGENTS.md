@@ -7,6 +7,7 @@ Love Island agentic simulation — research sandbox where **environment and accu
 ```bash
 python3 -m venv .venv && source .venv/bin/activate && pip install -e .
 python scripts/run_villa.py --stub --days 1          # no API keys
+python scripts/run_scheduled_season.py --stub       # cron parity dry-run (local)
 ./harness/hooks/validate.sh                          # harness gate (run before PR)
 python harness/evals/run_all.py                      # evals only
 python viewer/app.py                                 # replay logs at :8765
@@ -21,6 +22,7 @@ python viewer/app.py                                 # replay logs at :8765
 | `data/schedule.yaml` | Ceremony timing — environment determinism |
 | `logs/experiments/<id>/<condition>/<run>/` | Experiment tape (`events.jsonl`, `decisions.jsonl`, `state.json`, `manifest.json`) |
 | `logs/latest.json` | Pointer to the most recent run (viewer default) |
+| `research/runs/` | Interpretive notes for full 7-day seasons (may be auto-committed by cron) |
 | `harness/` | Harness layer: agents, tools, MCP specs, hooks, evals |
 
 ## Research invariants (do not regress)
@@ -41,7 +43,7 @@ python viewer/app.py                                 # replay logs at :8765
 
 ## Do not
 
-- Commit `.env`, API keys, or `logs/` artifacts
+- Commit `.env`, API keys, or `logs/` artifacts (automated cron may commit **`research/runs/` only**)
 - Reintroduce persona YAML fields or numeric relationship matrices
 - Add gender filters to recoupling partner pools or "TAKEN — cannot pick" host copy
 - Skip `./harness/hooks/validate.sh` after changing prompts, host logic, or models

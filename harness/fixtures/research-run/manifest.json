@@ -1,0 +1,11 @@
+{
+  "started_at": "2026-08-15T12:00:00+00:00",
+  "experiment_id": "scheduled",
+  "run_id": "cron-fixture",
+  "prompt_condition": "minimal",
+  "seed": 42,
+  "stub": true,
+  "season_days": 7,
+  "prize_emphasis": "high",
+  "default_model": "stub"
+}

@@ -36,3 +36,16 @@ tools:
     command: python -c "import json; from pathlib import Path; r=Path(json.load(open('logs/latest.json'))['run_dir']); import subprocess; subprocess.run(['tail','-n','{n}', str(Path('logs')/r/'events.jsonl')])"
     params:
       n: { type: integer, default: 20 }
+
+  - id: run_scheduled_season
+    description: Cron/GHA entrypoint — 7-day season under logs/experiments/scheduled/.
+    command: python scripts/run_scheduled_season.py {flags}
+    params:
+      flags: { type: string, default: "--stub --stub-summarizer" }
+
+  - id: summarize_run_for_research
+    description: LLM (or stub) fills research/runs template from a completed experiment tape.
+    command: python scripts/summarize_run_for_research.py {run_dir} {flags}
+    params:
+      run_dir: { type: string, default: "" }
+      flags: { type: string, default: "--stub" }

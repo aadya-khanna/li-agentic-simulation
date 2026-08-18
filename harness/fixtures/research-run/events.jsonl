@@ -1,0 +1,8 @@
+{"day": 1, "phase": "evening", "tick": 1, "kind": "host", "text": "Welcome to the villa! First coupling tonight.", "visibility": "public"}
+{"day": 1, "phase": "night", "tick": 2, "kind": "couple_choice", "actor": "Theo", "target": "Zara", "text": "I pick Zara.", "visibility": "public"}
+{"day": 2, "phase": "day", "tick": 3, "kind": "speak", "actor": "Theo", "target": "Zara", "text": "Morning chat.", "visibility": "public"}
+{"day": 2, "phase": "day", "tick": 4, "kind": "whisper", "actor": "Luca", "target": "Maya", "text": "Secret aside.", "visibility": "private"}
+{"day": 3, "phase": "night", "tick": 5, "kind": "host", "text": "Recoupling! Boys pick.", "visibility": "public"}
+{"day": 3, "phase": "night", "tick": 6, "kind": "couple_choice", "actor": "Luca", "target": "Freya", "text": "Stealing Freya.", "visibility": "public"}
+{"day": 3, "phase": "night", "tick": 7, "kind": "dump", "actor": "host", "text": "Luca, your time is up.", "extra": {"dumped": "Luca"}, "visibility": "public"}
+{"day": 7, "phase": "night", "tick": 8, "kind": "win", "text": "Theo and Zara win!", "visibility": "public"}

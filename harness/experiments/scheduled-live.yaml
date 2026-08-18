@@ -1,0 +1,13 @@
+experiment_id: scheduled
+conditions:
+  - minimal
+  - incentive
+seeds:
+  - 42
+days: 7
+stub: false
+prize_emphasis: high
+resume: false
+
+# Cron runs one condition per trigger (see scripts/run_scheduled_season.py rotation).
+# Manual matrix: python scripts/run_experiment.py harness/experiments/scheduled-live.yaml
