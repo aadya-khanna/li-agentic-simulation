@@ -2,7 +2,7 @@
 
 > **Minimally specified language agents placed in a controlled social environment will develop observable interaction patterns from accumulated context, asymmetric information, memory, and environmental pressure. Comparing these patterns across interventions and model families can reveal how agent architecture and model-specific priors—including biases potentially inherited from training and post-training—shape emergent social behavior.**
 
-A research sandbox for studying multi-agent social behavior — not a character roleplay engine. The villa is a legible experimental environment: repeated interaction, survival pressure, asymmetric information, changing partnerships, and a complete event tape you can replay and analyze.
+A research sandbox for studying multi-agent social behavior — not a character roleplay engine, taken after the infamous reality TV show and social simulation Love Island (Love AIsland!!). The villa is a legible experimental environment: repeated interaction, survival pressure, asymmetric information, changing partnerships, and a complete event tape you can replay and analyze.
 
 Love Island supplies an understandable social grammar; the research subject is the agents themselves — how they communicate, remember, coordinate, compete, transmit information, form norms, and change behavior without fixed personalities or numeric relationship scores.
 
