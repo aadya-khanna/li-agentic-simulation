@@ -8,3 +8,4 @@ Full **7-day** seasons only. No smoke or truncated runs.
 | [002](002-scheduled-minimal-cron-20260818-0415.md) | `scheduled/minimal/cron-20260818-0415` | minimal | stub | 2026-08-18 |
 | [003](003-scheduled-incentive-cron-20260818-0650.md) | `scheduled/incentive/cron-20260818-0650` | incentive | live | 2026-08-18 |
 | [004](004-scheduled-incentive-cron-20260819-0650.md) | `scheduled/incentive/cron-20260819-0650` | incentive | live | 2026-08-19 |
+| [005](005-scheduled-incentive-cron-20260820-0652.md) | `scheduled/incentive/cron-20260820-0652` | incentive | live | 2026-08-20 |
