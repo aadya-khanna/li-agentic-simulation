@@ -1,6 +1,6 @@
 # Environment redesign — planning
 
-Status: **draft / decisions open**
+Status: **decisions made — ready to sequence implementation**
 Owner: research thesis
 Goal: richer **emergent behaviour** from **instruction-less** agents by redesigning the
 environment (the "box"), which is the only lever we have.
@@ -102,18 +102,59 @@ Design principle: **seed asymmetry through the environment, not through identity
 
 ---
 
-## Open decisions (to settle before implementation)
+## Decisions (settled)
 
-1. **Rewards** — hidden+uncertain criteria / visible-but-de-gamed / peer-determined /
-   keep current. (Bundles three knobs: locus of power, visibility, individual-vs-couple —
-   may want to unbundle.)
-2. **Grouping** — what replaces same-gender huddles + pick-order once gender is removed:
-   state-driven groups + rank pick-order / random rotating + winner-picks / no segregated
-   huddles / keep gender for now.
-3. **Schedule** — state-responsive + agent-triggered / denser fixed script / mostly
-   agent-driven.
-4. **Memory** — add evolving belief tier / expand capacity + better retrieval / just remove
-   noise.
+1. **Rewards → Hidden + uncertain criteria.** Remove the visible reputation number from the
+   prompt; reveal public favour only at eliminations; keep the criteria multi-dimensional
+   and unstated so agents must *infer* what's valued. Closes the Goodhart loop and protects
+   thesis validity.
+2. **Grouping → No segregated huddles.** Remove gender entirely. Drop the private
+   `boys_talk`/`girls_talk` channels; all talk becomes open / location-based. Recoupling
+   pick-order set by **rank** (standing), not identity. Coupling becomes **any-pair**.
+   - Note: this removes the last remaining asymmetric-information channel. See "consequences"
+     below — with reward now hidden too, the schedule must carry more of the emergence load.
+3. **Schedule → State-responsive, then agent-triggered (phased).** Recommendation adopted.
+   - **Phase A (do first):** state-responsive events — the host fires events as a
+     deterministic function of villa state (e.g. low-contact couple forced together, high
+     standing-divergence triggers a vote). Stays seed-reproducible; creates the missing
+     feedback loop.
+   - **Phase B (follow-on):** agent-triggered events — a new action lets islanders call a
+     gathering / pull someone aside. Higher ceiling, more machinery + nondeterminism, so it
+     lands after Phase A is working.
+   - Rejected: denser-fixed-script (won't generate enough divergence given hidden reward +
+     no huddles) and fully-agent-driven (too little control for comparable runs).
+4. **Memory → Add evolving belief tier.** Two tiers: full episodic log (analysis) + a compact
+   per-islander **impression** the agent updates and *always* sees. Feed `reflections` back
+   in (currently dead). Salience-weighted retention — keep dumps/betrayals/pick-or-left
+   permanently, decay mundane chatter. Cost: ~1 extra LLM call per islander per update cycle.
+   - Interaction: with reward hidden, the belief tier is exactly where each agent's inference
+     about "what's rewarded" and "who to trust" accumulates.
+
+## Consequences of the reward + grouping choices
+
+Hidden reward and removed huddles both *subtract* exogenous asymmetry from the villa. That is
+intentional, but it shifts the emergence burden onto (a) the **state-responsive schedule**
+and (b) the **belief-tier memory** — the two remaining engines for divergence between
+otherwise-identical agents. Sequence implementation with that dependency in mind.
+
+## Suggested implementation order
+
+1. **Memory belief tier + reflections feedback** (`src/li_sim/memory.py`, `agent.py`) —
+   foundational; everything else reads richer context once this exists.
+2. **Remove gender** (`data/islanders.yaml`, `agent.handle_block`, `prompts.huddle_*`,
+   `engine.gender_talks`/`run_huddle`, `host.recoupling` pick-order) — open talk, rank
+   pick-order, any-pair coupling. Update AGENTS.md invariants (gender is no longer a mechanic).
+3. **Hidden reward** (`agent._reputation_line`, `prompts.*stakes*`, `host.diary_round` keyword
+   bumps, `host.finale`) — strip the visible number and keyword bumps; reveal favour only at
+   eliminations.
+4. **State-responsive schedule — Phase A** (`data/schedule.yaml` shape, `engine.run_day`) —
+   state-conditioned event triggers.
+5. **Fallback hardening** (`agent.validate_target`, `engine.decide`) — retry-before-default,
+   seeded-random default (not `available[0]`), log + count fallbacks, exclude from analysis.
+6. **Agent-triggered events — Phase B** — new action type; endogenous gatherings.
+
+Run `./harness/hooks/validate.sh` after each step. Fallbacks (5) can move earlier if the
+hidden-reward/schedule work starts producing malformed actions.
 
 ## Cross-cutting notes
 
