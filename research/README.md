@@ -11,12 +11,12 @@ Raw tapes stay under `logs/experiments/` (gitignored). This folder is the interp
 
 ## Automated pipeline (GitHub Actions)
 
-[`.github/workflows/scheduled-season.yml`](../.github/workflows/scheduled-season.yml) runs a **live 7-day season** every six hours (four times per day UTC), then an LLM research summarizer writes a note under `research/runs/` and commits **only that folder** to `main`.
+[`.github/workflows/scheduled-season.yml`](../.github/workflows/scheduled-season.yml) runs a **live 7-day season** every twelve hours (twice per day UTC), then an LLM research summarizer writes a note under `research/runs/` and commits **only that folder** to `main`.
 
 | UTC hour | Prompt condition |
 |----------|------------------|
-| 0, 12 | `minimal` |
-| 6, 18 | `incentive` |
+| 0 | `minimal` |
+| 12 | `incentive` |
 
 **Secrets:** `GEMINI_API_KEY` in repo Settings.
 

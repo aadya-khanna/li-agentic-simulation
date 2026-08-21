@@ -22,9 +22,9 @@ EXPERIMENT_ID = "scheduled"
 
 
 def condition_for_utc_hour(hour: int | None = None) -> str:
-    """Rotate minimal (0,12 UTC) and incentive (6,18 UTC)."""
+    """Rotate minimal (0 UTC) and incentive (12 UTC) for 12-hour cron slots."""
     hour = datetime.now(UTC).hour if hour is None else hour
-    return "incentive" if hour in (6, 18) else "minimal"
+    return "incentive" if hour == 12 else "minimal"
 
 
 def cron_run_id(when: datetime | None = None) -> str:
