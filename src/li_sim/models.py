@@ -65,6 +65,7 @@ class MemoryItem(BaseModel):
     text: str
     actors: list[str] = Field(default_factory=list)
     visibility: str = "location"
+    pinned: bool = False
 
 
 class ContactLog(BaseModel):
@@ -76,8 +77,8 @@ class ContactLog(BaseModel):
 
 
 class IslanderProfile(BaseModel):
+    slot: int
     name: str
-    gender: str
     model: str | None = None
     enters_on: int = 1
 
@@ -98,6 +99,8 @@ class IslanderState(BaseModel):
     dumped: bool = False
     memories: list[MemoryItem] = Field(default_factory=list)
     reflections: list[str] = Field(default_factory=list)
+    self_belief: str = ""
+    beliefs: dict[str, str] = Field(default_factory=dict)
     inner_thoughts: list[InnerThought] = Field(default_factory=list)
     contacts: dict[str, ContactLog] = Field(default_factory=dict)
     last_thought: str = ""
@@ -113,12 +116,11 @@ class DayPlan(BaseModel):
     dates: bool = False
     recoupling: bool = False
     recoupling_label: str | None = None
-    pickers: str | None = None
     dumping: bool = False
     dump_count: int = 1
     dump_mode: str = "singles_then_reputation"
     recoupling_dump_singles: bool = False
-    bombshells: list[str] = Field(default_factory=list)
+    bombshell_slots: list[int] = Field(default_factory=list)
     public_vote: bool = False
     at_risk_count: int = 2
     finale: bool = False

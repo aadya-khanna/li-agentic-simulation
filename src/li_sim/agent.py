@@ -1,4 +1,6 @@
-from __future__ import annotations 
+from __future__ import annotations
+
+from .beliefs import format_beliefs, format_reflections
 from .config import Settings
 from .memory import format_contacts, format_major_moments, format_memories, retrieve
 from .models import (
@@ -30,8 +32,7 @@ def handle_block(profile: IslanderProfile) -> str:
 You have no assigned personality, occupation, hometown, secrets, or private goal.
 You are free to be whoever you want in this villa. Invent yourself from what happens.
 Do not roleplay a pre-written Love Island archetype.
-Game grouping (a villa rule, not a personality): you sit with the {profile.gender}s
-for huddles. Recoupling pick-order may follow that grouping; who you pick does not have to.
+Recoupling pick order follows public standing — not identity labels.
 """
 
 
@@ -46,9 +47,11 @@ def _couple_map(state: VillaState) -> str:
     return "Couples: " + "; ".join(bits) + "." + extra
 
 
-def _reputation_line(state: VillaState) -> str:
-    parts = [f"{n}={state.reputation.get(n, 50):.0f}" for n in state.active_names()]
-    return "Public reputation: " + ", ".join(parts)
+def _standing_line() -> str:
+    return (
+        "Public standing: hidden between eliminations. "
+        "Infer from host announcements when someone is at risk or dumped."
+    )
 
 
 def system_prompt(profile: IslanderProfile, settings: Settings | None = None) -> str:
@@ -82,7 +85,7 @@ Day {state.day}, phase={state.phase.value}, tick={state.tick}.
 {stakes_block}Public votes put people at risk; safe islanders then choose who to save.
 You are at the {me.location.value}. People here: {', '.join(loc_people) or 'just you'}.
 {_couple_map(state)}
-{_reputation_line(state)}
+{_standing_line()}
 Dumped: {', '.join(state.dumped) or 'nobody'}.
 
 MAJOR MOMENTS (shared villa history — treat as fact):
@@ -91,7 +94,13 @@ MAJOR MOMENTS (shared villa history — treat as fact):
 Your conversations so far (who you've actually talked with — not scores):
 {format_contacts(me, others)}
 
-What you personally remember:
+YOUR IMPRESSIONS (private belief — may diverge from shared facts):
+{format_beliefs(me, others)}
+
+YOUR REFLECTIONS (private diary thoughts):
+{format_reflections(me)}
+
+RECENT EPISODES (salient events persist; mundane chatter fades):
 {format_memories(memories)}
 
 ALLOWED ACTIONS: {allowed_s}

@@ -3,7 +3,8 @@
 Status: **decisions made — ready to sequence implementation**
 Owner: research thesis
 Goal: richer **emergent behaviour** from **instruction-less** agents by redesigning the
-environment (the "box"), which is the only lever we have.
+environment (the "box"), which is th
+e only lever we have.
 
 ## Framing
 
@@ -129,6 +130,12 @@ Design principle: **seed asymmetry through the environment, not through identity
    permanently, decay mundane chatter. Cost: ~1 extra LLM call per islander per update cycle.
    - Interaction: with reward hidden, the belief tier is exactly where each agent's inference
      about "what's rewarded" and "who to trust" accumulates.
+5. **Neutral handles → `{model-slug}-agent{n}`.** Drop human names (Maya, Luca, …). Islander
+   handles are **`gemini-agent1`**, **`gemini-agent2`**, … **`gemini-agent{n}`** (hyphenated).
+   Names are derived from the run's model slug + slot index — not personality. Removes Love
+   Island name prior leakage and makes homogeneous multi-agent runs legible in logs.
+   Bombshells continue the sequence (e.g. `gemini-agent7` enters D3). Implement as **Step 2b**
+   before hidden reward (Step 3).
 
 ## Consequences of the reward + grouping choices
 
@@ -144,6 +151,8 @@ otherwise-identical agents. Sequence implementation with that dependency in mind
 2. **Remove gender** (`data/islanders.yaml`, `agent.handle_block`, `prompts.huddle_*`,
    `engine.gender_talks`/`run_huddle`, `host.recoupling` pick-order) — open talk, rank
    pick-order, any-pair coupling. Update AGENTS.md invariants (gender is no longer a mechanic).
+2b. **Neutral handles** (`data/islanders.yaml`, `engine.load_profiles`, evals, stub LLM) —
+   `{model-slug}-agent{n}` naming; no human names in roster or hardcoded eval fixtures.
 3. **Hidden reward** (`agent._reputation_line`, `prompts.*stakes*`, `host.diary_round` keyword
    bumps, `host.finale`) — strip the visible number and keyword bumps; reveal favour only at
    eliminations.
@@ -164,3 +173,186 @@ hidden-reward/schedule work starts producing malformed actions.
   divergence vs loyalty-vs-betrayal tension) — that choice reprioritizes the levers.
 - Respect AGENTS.md invariants (open identity, no relationship maths, private thought,
   shared constitution) and run cost/length (7 days, stub vs real models).
+
+---
+
+## Step 1 — implementation spec (ready to code)
+
+**Status:** implemented
+
+### Data model (`src/li_sim/models.py`)
+
+Add to `IslanderState`:
+
+- `self_belief: str = ""` — compact private summary of own position
+- `beliefs: dict[str, str]` — per-other-islander impression (subjective, not fact)
+- `MemoryItem.pinned: bool = False` — salient episodic events never decay
+
+### Salience + episodic tier (`src/li_sim/memory.py`)
+
+- `is_salient(event)` → `True` for `dump`, `couple_choice`, `win`, and host text containing
+  `dumped` / `left single` / `bombshell`
+- `remember()` sets `pinned` from salience; `_trim_memories()` keeps **all pinned** + last
+  `memory_limit * 2` mundane items
+- `format_beliefs()`, `format_reflections()` for prompt injection
+- Keep `retrieve()` for recent episodic supplement (labelled separately from beliefs)
+
+### Belief update (`src/li_sim/beliefs.py` — new)
+
+End-of-day call (after diary, before checkpoint):
+
+- Input: current `self_belief` + `beliefs`, today's `reflections`, today's memories,
+  `format_contacts`, recent `major_moments`
+- LLM returns JSON: `{"self": "...", "others": {"Name": "one sentence"}}`
+- Stub path: derive from contacts + latest reflection (no extra API cost in CI)
+- Log `belief_update` events to `events.jsonl` for analysis
+- Setting: `Settings.belief_updates: bool = True`
+
+### Prompt injection (`src/li_sim/agent.py`)
+
+Add to `decision_user_prompt` **before** episodic memories:
+
+```
+YOUR IMPRESSIONS (private belief — may diverge from fact):
+{format_beliefs}
+
+YOUR REFLECTIONS (private):
+{format_reflections}
+
+RECENT EPISODES (salient events persist; mundane chatter fades):
+{format_memories(retrieve(...))}
+```
+
+### Engine hook (`src/li_sim/engine.py`)
+
+At end of `run_day()`, after diary:
+
+```python
+if self.settings.belief_updates:
+    update_beliefs(self.state, self.profiles, self.llm, self.log, self.settings)
+```
+
+### Eval + docs
+
+- New `harness/evals/belief_memory.py`: pinned dump survives trim; reflections + beliefs
+  appear in prompt; stub update populates `beliefs`
+- Wire into `harness/evals/run_all.py`
+- Update `harness/context/architecture.md` — beliefs + reflections now injected
+- Run `./harness/hooks/validate.sh`
+
+### Out of scope for step 1
+
+- Removing gender, hidden reward, fallbacks, state-responsive schedule (steps 2–6)
+
+
+---
+
+## Step 2 — implementation spec
+
+**Status:** implemented
+
+- Removed `gender` from roster and `IslanderProfile`
+- Removed `gender_talks` / `run_huddle` from engine; talk is location-based via grafting ticks only
+- Recoupling: any-pair coupling; pick order = bombshells first, then reputation rank (desc)
+- Removed `pickers` from schedule and `DayPlan`
+- Updated `world_rules`, `handle_block`, AGENTS.md invariants
+
+### Validation
+
+1. `./harness/hooks/validate.sh` — includes `no_gender` eval
+2. `python scripts/run_villa.py --stub --days 1` — no `huddle` events; `couple_choice` on D1; host announces full pick order
+
+### Good result expectations
+
+- Event tape has **zero `huddle`** events; social interaction is `speak` / `whisper` / `move` during grafting
+- Recoupling host copy lists **pick order by standing** (higher reputation earlier), not boys/girls
+- **Any-pair couples possible** (same-handle-type pairs allowed) — watch for more partner switches vs step-0 runs
+- Belief tier from step 1 still updates end-of-day; impressions should reference public talk, not huddle intel
+
+---
+
+## Step 2b — neutral handles (`{model-slug}-agent{n}`)
+
+**Status:** implemented
+
+### Decision
+
+Handles are **`{model-slug}-agent{n}`** (e.g. `gemini-agent1`, `gemini-agent2`, …). No human
+names. Aligns with open identity: names are addresses, not character sheets — and strips
+model prior leakage from names like "Maya" or "Luca".
+
+### Naming rules
+
+| Rule | Detail |
+|------|--------|
+| Format | `{model-slug}-agent{n}` — hyphenated, 1-indexed |
+| Model slug | From `Settings.default_model` (e.g. `gemini/gemini-flash-lite-latest` → `gemini-agent1`) |
+| Starters | Slots 1–6, `enters_on: 1` |
+| Bombshells | Continue sequence: slot 7 (`enters_on: 3`), slot 8 (`enters_on: 5`) |
+| Per-islander model override | If `LI_MODEL_*` set, that islander's slug uses their model (future; v1 may use one slug for all) |
+
+**Recommended:** derive handles at **`load_profiles(settings)`** from model slug + slot, so
+a Claude run produces `claude-agent1`… without hand-editing YAML per experiment.
+
+### YAML shape (slot-based)
+
+```yaml
+islanders:
+  - slot: 1
+    enters_on: 1
+  - slot: 2
+    enters_on: 1
+  # … slots 3–6
+  - slot: 7
+    enters_on: 3
+  - slot: 8
+    enters_on: 5
+```
+
+`IslanderProfile.name` populated at load: `f"{slug}-agent{slot}"`.
+
+### Files to touch
+
+- `data/islanders.yaml` — slots only (or static names if v1 defers dynamic slug)
+- `src/li_sim/engine.py` — `load_profiles(settings)` assigns names
+- `data/schedule.yaml` — bombshells reference slots or resolved names (`gemini-agent7`)
+- `src/li_sim/llm.py` — remove hardcoded `Maya`, `Luca`, … in `_active_others`
+- `harness/evals/*` — use first profile from roster, not `"Maya"`
+- `src/li_sim/agent.py` — `handle_block` copy: "addressed as gemini-agent3", not human name
+- `AGENTS.md` — roster is slot + derived handle, not human names
+
+### Validation (Step 2b)
+
+1. `./harness/hooks/validate.sh` — evals use dynamic roster, no human-name asserts
+2. `python scripts/run_villa.py --stub --days 1` — events/decisions reference `*-agent*` handles only
+
+### Good result
+
+- Zero human names in `events.jsonl`, `decisions.jsonl`, or prompts
+- Handles stable for a given seed+model (reproducibility eval still passes)
+- Bombshell enter as next agent number in sequence
+- Research notes / brief.log read as multi-agent run, not Love Island fanfic cast
+
+---
+
+## Step 3 — hidden standing
+
+**Status:** implemented
+
+- Removed numeric `Public reputation:` line from decision prompts → hidden-standing fact
+- Incentive/minimal copy: favour revealed at eliminations only, not as visible score
+- Removed diary keyword reputation bumps (Goodhart loop)
+- Public vote host: at-risk names only, no numeric standings board
+- Finale host: winners announced without couple score breakdown (scores stay in `extra` / `state.json`)
+- Challenge: no "reputation ticks up"; challenge memories omit numeric scores
+
+### Validation
+
+1. `./harness/hooks/validate.sh` — includes `hidden_standing` eval
+2. `python scripts/run_villa.py --stub --days 6` — D6 host has "At risk" without `(53)` scores; no `Public reputation:` in decisions
+
+### Good result
+
+- Agents infer standing from dumps/votes/beliefs, not a number to optimize
+- `state.reputation` still updates internally for pick order + analysis
+- Console recap table may still show scores for human operators (not in agent prompts)

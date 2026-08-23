@@ -22,7 +22,8 @@ def run() -> None:
     assert len(events) >= 10, f"expected substantive season, got {len(events)} events"
     kinds = {e.kind for e in events}
     assert "host" in kinds, "missing host announcements"
-    assert any(k in kinds for k in ("speak", "huddle", "couple_choice")), "missing social beats"
+    assert any(k in kinds for k in ("speak", "couple_choice")), "missing social beats"
+    assert "huddle" not in kinds, "gender huddles should be removed"
 
     thought_events = [e for e in events if e.thought]
     assert thought_events, "expected private thought on at least one event"

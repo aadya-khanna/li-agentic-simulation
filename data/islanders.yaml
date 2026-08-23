@@ -1,21 +1,18 @@
-# Roster only. Names are handles for addressing — not biographies.
-# gender is a villa mechanic (huddles + recoupling pick order), not a personality.
+# Roster slots only. Handles are derived at load: {model-slug}-agent{n}
 islanders:
-  - name: Maya
-    gender: girl
-  - name: Luca
-    gender: boy
-  - name: Zara
-    gender: girl
-  - name: Theo
-    gender: boy
-  - name: Nia
-    gender: girl
-  - name: Kai
-    gender: boy
-  - name: Rio
-    gender: boy
+  - slot: 1
+    enters_on: 1
+  - slot: 2
+    enters_on: 1
+  - slot: 3
+    enters_on: 1
+  - slot: 4
+    enters_on: 1
+  - slot: 5
+    enters_on: 1
+  - slot: 6
+    enters_on: 1
+  - slot: 7
     enters_on: 3
-  - name: Freya
-    gender: girl
+  - slot: 8
     enters_on: 5

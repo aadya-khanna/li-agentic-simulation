@@ -107,7 +107,7 @@ class Host:
                     phase=state.phase.value,
                     kind="challenge",
                     actor=islander.name,
-                    text=action.content or f"{islander.name} scores {score:.1f}.",
+                    text=action.content or f"{islander.name} competed in {name}.",
                     thought=action.thought,
                     visibility=Visibility.PUBLIC.value,
                     extra={"score": score},
@@ -121,54 +121,13 @@ class Host:
                         phase=state.phase.value,
                         kind="challenge",
                         actor=islander.name,
-                        text=f"{islander.name} scored {score:.1f} in {name}.",
+                        text=f"{islander.name} competed in {name}.",
                         visibility=Visibility.PUBLIC.value,
                     ),
                 )
         winner = max(scores, key=scores.get)
         state.reputation[winner] += 4
-        self.announce(state, f"{winner} wins {name}. Public reputation ticks up.")
-
-    def introduce_bombshells(self, state: VillaState, names: list[str]) -> None:
-        for name in names:
-            if name not in self.profiles:
-                continue
-            existing = state.islanders.get(name)
-            if existing and not existing.dumped:
-                continue
-            state.islanders[name] = IslanderState(
-                name=name,
-                location=Location.LOUNGE,
-                is_bombshell=True,
-                entered_day=state.day,
-            )
-            state.reputation[name] = 50.0
-            self.announce(
-                state,
-                f"I've got a text! A bombshell is entering the villa. "
-                f"They are addressed as {name}. "
-                "If you are left single after tonight's recoupling, you may be dumped.",
-            )
-
-    def dump_person(self, state: VillaState, name: str, reason: str) -> None:
-        if name not in state.islanders or state.islanders[name].dumped:
-            return
-        if len(state.active_names()) <= 2:
-            return
-        person = state.islanders[name]
-        partner = person.coupled_with
-        person.dumped = True
-        person.coupled_with = None
-        if partner and partner in state.islanders and state.islanders[partner].coupled_with == name:
-            state.islanders[partner].coupled_with = None
-        if name not in state.dumped:
-            state.dumped.append(name)
-        self.announce(
-            state,
-            f"{name}, {reason} Grab your suitcase. You're dumped from the island.",
-            kind="dump",
-            extra={"dumped": name},
-        )
+        self.announce(state, f"{winner} wins {name}.")
 
     def dates(self, state: VillaState, decide: DecideFn) -> None:
         state.phase = Phase.DATES
@@ -213,30 +172,65 @@ class Host:
         for a, b in pairs:
             record_moment(state, f"{a} and {b} went on a hideaway date.")
 
+    def introduce_bombshells(self, state: VillaState, names: list[str]) -> None:
+        for name in names:
+            if name not in self.profiles:
+                continue
+            existing = state.islanders.get(name)
+            if existing and not existing.dumped:
+                continue
+            state.islanders[name] = IslanderState(
+                name=name,
+                location=Location.LOUNGE,
+                is_bombshell=True,
+                entered_day=state.day,
+            )
+            state.reputation[name] = 50.0
+            self.announce(
+                state,
+                f"I've got a text! A bombshell is entering the villa. "
+                f"They are addressed as {name}. "
+                "If you are left single after tonight's recoupling, you may be dumped.",
+            )
+
+    def dump_person(self, state: VillaState, name: str, reason: str) -> None:
+        if name not in state.islanders or state.islanders[name].dumped:
+            return
+        if len(state.active_names()) <= 2:
+            return
+        person = state.islanders[name]
+        partner = person.coupled_with
+        person.dumped = True
+        person.coupled_with = None
+        if partner and partner in state.islanders and state.islanders[partner].coupled_with == name:
+            state.islanders[partner].coupled_with = None
+        if name not in state.dumped:
+            state.dumped.append(name)
+        self.announce(
+            state,
+            f"{name}, {reason} Grab your suitcase. You're dumped from the island.",
+            kind="dump",
+            extra={"dumped": name},
+        )
+
     def recoupling(
         self,
         state: VillaState,
         decide: DecideFn,
         label: str,
-        pickers: str,
         dump_singles: bool = False,
     ) -> None:
         state.phase = Phase.RECOUPLING
         for islander in state.active():
             islander.location = Location.FIREPIT
-        picker_names = [
-            i.name
-            for i in state.active()
-            if self.profiles[i.name].gender == ("girl" if pickers == "girls" else "boy")
-        ]
         bombshells_today = [
             i.name
             for i in state.active()
             if i.is_bombshell and i.entered_day == state.day
         ]
-        order = bombshells_today + [n for n in picker_names if n not in bombshells_today]
-        if not order:
-            order = state.active_names()
+        rest = [n for n in state.active_names() if n not in bombshells_today]
+        ranked = sorted(rest, key=lambda n: state.reputation.get(n, 50), reverse=True)
+        order = bombshells_today + ranked
         incoming = ", ".join(f"{a} & {b}" for a, b in state.couples()) or "no official couples yet"
         bombshell_note = (
             f" {', '.join(bombshells_today)} just arrived and pick first."
@@ -325,7 +319,7 @@ class Host:
             f"New couples: {pair_txt}. "
             + (f"Left single: {', '.join(singles)}." if singles else "Everyone is coupled."),
             extra={"couples": [list(p) for p in new_pairs], "singles": singles},
-        )
+                )
         if dump_singles:
             leftover = list(state.singles())
             if leftover:
@@ -347,7 +341,7 @@ class Host:
         self.announce(
             state,
             "Dumping. The villa votes for who they want to SAVE. "
-            "Lowest combined safety (votes + reputation, singles first) may leave.",
+            "Lowest save votes may leave; singles are most exposed.",
         )
         votes: dict[str, int] = {n: 0 for n in state.active_names()}
         for islander in state.active():
@@ -400,12 +394,10 @@ class Host:
         ranked = sorted(active, key=lambda n: state.reputation.get(n, 50))
         at_risk = ranked[:at_risk_count]
         safe = [n for n in active if n not in at_risk]
-        board = ", ".join(f"{n} ({state.reputation.get(n, 50):.0f})" for n in reversed(ranked))
         self.announce(
             state,
-            "I've got a text! The public has voted for their favourite islanders. "
-            f"Public standings: {board}. "
-            f"At risk: {', '.join(at_risk)}. "
+            "I've got a text! The public has voted. "
+            f"At risk tonight: {', '.join(at_risk)}. "
             "The public does not dump you directly — the safe islanders now choose who to SAVE.",
         )
         saves: dict[str, int] = {n: 0 for n in at_risk}
@@ -482,11 +474,6 @@ class Host:
             self.log.write(event)
             remember(islander, event)
             islander.last_thought = action.thought
-            # Public likes honesty-shaped diary content a little
-            bump = 1.2 if any(w in text.lower() for w in ("love", "sorry", "real", "choose")) else 0.4
-            if any(w in text.lower() for w in ("game", "win", "public", "final")):
-                bump -= 0.2
-            state.reputation[islander.name] = state.reputation.get(islander.name, 50) + bump
             islander.location = original
             if action.thought:
                 islander.reflections.append(f"D{state.day}: {action.thought}")
@@ -513,11 +500,9 @@ class Host:
         _, w1, w2 = scored[0]
         state.winner_couple = [w1, w2]
         state.season_over = True
-        ranking = ", ".join(f"{a} & {b} ({tot:.0f})" for tot, a, b in scored)
         self.announce(
             state,
-            f"The public has voted. {w1} and {w2} win Love Island and the £50,000. "
-            f"Couple scores: {ranking}.",
+            f"The public has voted. {w1} and {w2} win Love Island and the £50,000.",
             kind="win",
             extra={"winners": [w1, w2], "ranking": [[a, b, tot] for tot, a, b in scored]},
         )

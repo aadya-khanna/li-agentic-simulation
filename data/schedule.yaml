@@ -6,7 +6,6 @@ days:
     dates: false
     recoupling: true
     recoupling_label: First impressions coupling
-    pickers: girls
     recoupling_dump_singles: false
     dumping: false
     public_vote: false
@@ -24,12 +23,11 @@ days:
     diary: true
   - day: 3
     grafting_ticks: 3
-    bombshells: [Rio]
+    bombshell_slots: [7]
     challenge: false
     dates: false
     recoupling: true
     recoupling_label: Recoupling
-    pickers: girls
     recoupling_dump_singles: true
     dumping: false
     public_vote: false
@@ -46,13 +44,12 @@ days:
     diary: true
   - day: 5
     grafting_ticks: 3
-    bombshells: [Freya]
+    bombshell_slots: [8]
     challenge: true
     challenge_name: Partner Quiz
     dates: false
     recoupling: true
     recoupling_label: Recoupling
-    pickers: boys
     recoupling_dump_singles: true
     dumping: false
     public_vote: false

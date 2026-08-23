@@ -51,7 +51,7 @@ def print_open(
     for p in profiles.values():
         late = f" · bombshell day {p.enters_on}" if p.enters_on > 1 else ""
         intro.append(f"{p.name}", style="bold")
-        intro.append(f" — handle ({p.gender}s huddle){late}\n")
+        intro.append(f" — handle{late}\n")
     console.print(Panel(intro, title="Love Island Agentic Simulation", border_style="magenta"))
 
 

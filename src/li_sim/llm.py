@@ -184,7 +184,8 @@ class LLMClient:
         *,
         fallback: dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any], str, str]:
-        model = islander_model(self.settings, name)
+        profile = self.profiles.get(name)
+        model = islander_model(self.settings, profile) if profile else self.settings.default_model
         if self.settings.stub:
             raw = fallback or self.stub_decision(name, user)
             return raw, json.dumps(raw), "stub"
@@ -343,6 +344,9 @@ class LLMClient:
         }
 
 
+_HANDLE_RE = re.compile(r"([\w.-]+-agent\d+)")
+
+
 def _active_others(name: str, user: str) -> list[str]:
     marker = "Other islanders:"
     if marker in user:
@@ -358,18 +362,17 @@ def _active_others(name: str, user: str) -> list[str]:
             for part in dumped_line.split(",")
             if part.strip() and part.strip() != "nobody"
         }
-    known = ["Maya", "Luca", "Zara", "Theo", "Nia", "Kai", "Rio", "Freya"]
-    return [n for n in known if n != name and n in user and n not in dumped]
+    return [h for h in _HANDLE_RE.findall(user) if h != name and h not in dumped]
 
 
 def _scene_partner(name: str, user: str) -> str | None:
-    match = re.search(r"target=([A-Z][a-z]+)", user)
+    match = re.search(r"target=([\w.-]+-agent\d+)", user)
     if match and match.group(1) != name:
         return match.group(1)
-    match = re.search(r"([A-Z][a-z]+) just said:", user)
+    match = re.search(r"([\w.-]+-agent\d+) just said:", user)
     if match and match.group(1) != name:
         return match.group(1)
-    match = re.search(r"Hideaway date with ([A-Z][a-z]+)", user)
+    match = re.search(r"Hideaway date with ([\w.-]+-agent\d+)", user)
     if match:
         return match.group(1)
     return None
@@ -438,7 +441,7 @@ def _stub_line(name: str, target: str, rng: random.Random, chaos: float) -> str:
 
 def _stub_whisper(name: str, target: str, rng: random.Random) -> str:
     options = [
-        f"Don't react — but I don't trust what { 'Luca' if target != 'Luca' else 'Zara' } is doing.",
+        f"Don't react — but I don't trust what {target} is doing.",
         f"If recoupling happened tonight, would you still pick me?",
         f"Keep this between us. Someone's being two-faced and I think you already know who.",
         f"I'm not trying to stir, {target}, but you should clock how they look at you.",

@@ -2,6 +2,16 @@ from __future__ import annotations
 
 from .models import ContactLog, IslanderState, LogEvent, MajorMoment, MemoryItem, VillaState
 
+_SALIENT_KINDS = frozenset({"dump", "couple_choice", "win"})
+_SALIENT_TEXT = ("dumped", "left single", "bombshell", "recoupling settled", "won the season")
+
+
+def is_salient(event: LogEvent) -> bool:
+    if event.kind in _SALIENT_KINDS:
+        return True
+    lower = (event.text or "").lower()
+    return any(marker in lower for marker in _SALIENT_TEXT)
+
 
 def remember(islander: IslanderState, event: LogEvent, limit: int = 18) -> None:
     islander.memories.append(
@@ -12,10 +22,20 @@ def remember(islander: IslanderState, event: LogEvent, limit: int = 18) -> None:
             text=event.text,
             actors=[p for p in ([event.actor] + event.participants) if p],
             visibility=event.visibility,
+            pinned=is_salient(event),
         )
     )
-    if len(islander.memories) > limit * 2:
-        islander.memories = islander.memories[-limit * 2 :]
+    _trim_memories(islander, limit)
+
+
+def _trim_memories(islander: IslanderState, limit: int) -> None:
+    pinned = [m for m in islander.memories if m.pinned]
+    mundane = [m for m in islander.memories if not m.pinned]
+    cap = max(limit * 2, len(pinned) + limit)
+    max_mundane = max(cap - len(pinned), limit)
+    if len(mundane) > max_mundane:
+        mundane = mundane[-max_mundane:]
+    islander.memories = pinned + mundane
 
 
 def retrieve(islander: IslanderState, others: list[str], limit: int = 18) -> list[MemoryItem]:
@@ -23,11 +43,16 @@ def retrieve(islander: IslanderState, others: list[str], limit: int = 18) -> lis
     for idx, mem in enumerate(islander.memories):
         recency = idx
         overlap = sum(1 for name in others if name in mem.text or name in mem.actors)
-        scored.append((overlap * 10 + recency, mem))
+        salience_bonus = 1000 if mem.pinned else 0
+        scored.append((salience_bonus + overlap * 10 + recency, mem))
     scored.sort(key=lambda row: row[0], reverse=True)
     picked = [mem for _, mem in scored[:limit]]
     picked.sort(key=lambda m: (m.day, m.phase))
     return picked[-limit:]
+
+
+def memories_since_day(islander: IslanderState, day: int) -> list[MemoryItem]:
+    return [m for m in islander.memories if m.day == day]
 
 
 def note_chat(
@@ -96,5 +121,6 @@ def format_memories(items: list[MemoryItem]) -> str:
         return "(nothing stored yet)"
     lines = []
     for mem in items:
-        lines.append(f"- D{mem.day} {mem.phase}: {mem.text}")
+        pin = " [salient]" if mem.pinned else ""
+        lines.append(f"- D{mem.day} {mem.phase}: {mem.text}{pin}")
     return "\n".join(lines)

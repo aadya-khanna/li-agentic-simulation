@@ -39,10 +39,11 @@ def run() -> None:
 
 def _roster_is_handles_only() -> None:
     raw = yaml.safe_load((ROOT / "data" / "islanders.yaml").read_text(encoding="utf-8"))
-    allowed = {"name", "gender", "enters_on", "model"}
+    allowed = {"slot", "enters_on", "model"}
     for row in raw["islanders"]:
         extra = set(row) - allowed
-        assert not extra, f"islanders.yaml has non-handle fields {extra} on {row.get('name')}"
+        assert not extra, f"islanders.yaml has non-slot fields {extra} on slot {row.get('slot')}"
+        assert "name" not in row, "roster must not contain human names — use slot only"
 
 
 def _profile_model_fields() -> None:
@@ -58,8 +59,9 @@ def _agent_prompt_invariants() -> None:
     from li_sim.config import Settings
     from li_sim.engine import load_profiles
 
-    profile = load_profiles()["Maya"]
     settings = Settings(prompt_condition="minimal")
+    profiles = load_profiles(settings=settings)
+    profile = profiles["gemini-agent1"]
     blob = "\n".join([system_prompt(profile, settings), handle_block(profile)])
     lower = blob.lower()
     positive_persona_markers = (
@@ -76,6 +78,8 @@ def _agent_prompt_invariants() -> None:
         assert marker not in lower, f"agent prompt contains persona marker: {marker!r}"
     assert "does not forbid" in lower
     assert "pick anyone" in lower or "pick anyone still" in lower
+    assert "boys talk" not in lower
+    assert "girls talk" not in lower
 
 
 def _environment_facts_only() -> None:
@@ -87,14 +91,16 @@ def _environment_facts_only() -> None:
         date_extra,
         diary_extra,
         grafting_extra,
-        huddle_extra,
         scene_reply_extra,
         stakes_line,
         world_rules,
     )
 
-    profile = load_profiles()["Maya"]
-    state = new_villa(load_profiles(), "Test", Settings(prompt_condition="minimal"))
+    settings = Settings(prompt_condition="minimal")
+    profiles = load_profiles(settings=settings)
+    profile = profiles["gemini-agent1"]
+    state = new_villa(profiles, "Test", settings)
+    other = profiles["gemini-agent2"].name
 
     for condition in ("minimal", "incentive"):
         settings = Settings(prompt_condition=condition)  # type: ignore[arg-type]
@@ -103,17 +109,9 @@ def _environment_facts_only() -> None:
             system_prompt(profile, settings),
             decision_user_prompt(profile, state, [ActionType.SPEAK], settings=settings),
             grafting_extra(settings),
-            huddle_extra(
-                settings,
-                label="boys",
-                when="morning",
-                names=["Luca", "Theo"],
-                others=["Theo"],
-                recent="(opening)",
-            ),
-            scene_reply_extra(settings, "Luca", "hello"),
+            scene_reply_extra(settings, other, "hello"),
             diary_extra(settings),
-            date_extra(settings, "Luca"),
+            date_extra(settings, other),
             stakes_line(settings),
         ]
         joined = "\n".join(blobs).lower()
