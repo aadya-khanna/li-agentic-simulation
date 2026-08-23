@@ -56,6 +56,7 @@ class Action(BaseModel):
     content: str | None = None
     location: Location | None = None
     challenge_effort: int | None = Field(default=None, ge=1, le=10)
+    fallback_applied: bool = False
 
 
 class MemoryItem(BaseModel):
@@ -111,9 +112,6 @@ class IslanderState(BaseModel):
 class DayPlan(BaseModel):
     day: int
     grafting_ticks: int = 3
-    challenge: bool = False
-    challenge_name: str | None = None
-    dates: bool = False
     recoupling: bool = False
     recoupling_label: str | None = None
     dumping: bool = False
@@ -127,9 +125,22 @@ class DayPlan(BaseModel):
     diary: bool = True
 
 
+class RewardTriggerSpec(BaseModel):
+    id: str
+    priority: int = 50
+    event: str
+    min_day: int = 1
+    max_partner_contact: int | None = None
+    min_pair_contact: int | None = None
+    min_single_contact: int | None = None
+    min_active: int | None = None
+    min_days_since_challenge: int | None = None
+
+
 class SeasonSchedule(BaseModel):
     season_name: str = "Villa Unknown"
     days: list[DayPlan]
+    reward_triggers: list[RewardTriggerSpec] = Field(default_factory=list)
 
 
 class MajorMoment(BaseModel):
@@ -186,6 +197,11 @@ class VillaState(BaseModel):
     season_over: bool = False
     allowed_actions: list[str] = Field(default_factory=list)
     prize_emphasis: str = "high"
+    last_recoupling_day: int = 0
+    last_challenge_day: int = 0
+    last_reward_day: int = 0
+    last_reward_id: str = ""
+    fallback_count: int = 0
 
     def active(self) -> list[IslanderState]:
         return [i for i in self.islanders.values() if not i.dumped]

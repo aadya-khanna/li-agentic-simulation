@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .beliefs import format_beliefs, format_reflections
 from .config import Settings
+from .fallbacks import pick_from_pool
 from .memory import format_contacts, format_major_moments, format_memories, retrieve
 from .models import (
     Action,
@@ -126,16 +127,26 @@ WORLD_ACTIONS = [
 ]
 
 
+def public_line(action: Action, default: str) -> str:
+    if action.content:
+        return action.content
+    if action.fallback_applied:
+        return ""
+    return default
+
+
 def validate_target(
     action: Action,
     state: VillaState,
     actor: str,
     *,
     available: list[str] | None = None,
+    settings: Settings | None = None,
+    apply_defaults: bool = True,
 ) -> tuple[Action, list[str]]:
     notes: list[str] = []
-    active = set(state.active_names())
-    pool = set(available) if available is not None else active
+    pool = set(available) if available is not None else set(state.active_names())
+
     if action.target and action.target not in pool:
         notes.append(f"target {action.target!r} not in pool; cleared")
         action.target = None
@@ -147,20 +158,70 @@ def validate_target(
         ):
             notes.append(f"forced {action.type.value} -> pass")
             action.type = ActionType.PASS
-        if action.type == ActionType.COUPLE and available:
-            action.target = available[0]
-            notes.append(f"couple target defaulted to {action.target}")
+
     if action.target == actor:
         notes.append("target was self; cleared")
         action.target = None
         if action.type in (ActionType.SPEAK, ActionType.WHISPER):
             notes.append(f"forced {action.type.value} -> pass")
             action.type = ActionType.PASS
-        if action.type == ActionType.COUPLE and available:
-            action.target = next((n for n in available if n != actor), None)
-            if action.target:
-                notes.append(f"couple target defaulted to {action.target}")
+
+    if apply_defaults and settings is not None:
+        action, default_notes = _apply_defaults(action, state, actor, available, settings)
+        notes.extend(default_notes)
+    elif apply_defaults and action.type == ActionType.MOVE and action.location is None:
+        action.location = Location.TERRACE
+        notes.append("move location defaulted to terrace")
+
+    return action, notes
+
+
+def _apply_defaults(
+    action: Action,
+    state: VillaState,
+    actor: str,
+    available: list[str] | None,
+    settings: Settings,
+) -> tuple[Action, list[str]]:
+    notes: list[str] = []
+
+    if action.type == ActionType.COUPLE and available:
+        choices = [n for n in available if n != actor]
+        if choices and (not action.target or action.target not in choices):
+            action.target = pick_from_pool(
+                settings,
+                state.day,
+                state.phase.value,
+                actor,
+                "couple",
+                pool=choices,
+            )
+            notes.append(f"couple target defaulted (seeded) to {action.target}")
+
+    if action.type in (ActionType.SAVE, ActionType.VOTE) and available:
+        choices = list(available)
+        if choices and (not action.target or action.target not in choices):
+            action.type = ActionType.SAVE
+            action.target = pick_from_pool(
+                settings,
+                state.day,
+                state.phase.value,
+                actor,
+                "save",
+                pool=choices,
+            )
+            notes.append(f"save target defaulted (seeded) to {action.target}")
+
     if action.type == ActionType.MOVE and action.location is None:
         action.location = Location.TERRACE
         notes.append("move location defaulted to terrace")
+
     return action, notes
+
+
+def needs_mandatory_fix(action: Action, allowed: list[ActionType], available: list[str] | None) -> bool:
+    if ActionType.COUPLE in allowed and available:
+        return action.type != ActionType.COUPLE or not action.target or action.target not in available
+    if ActionType.SAVE in allowed and available:
+        return action.type not in (ActionType.SAVE, ActionType.VOTE) or not action.target or action.target not in available
+    return False

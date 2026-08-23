@@ -5,13 +5,15 @@
 **No gender grouping:** talk is location-based (grafting ticks). Recoupling is any-pair; pick order by reputation rank.
 
 ```
-schedule.yaml (days/phases)
+schedule.yaml (structural days + reward_triggers)
        ↓
 Simulation.run()  ← Settings (stub, prize, dual_thought)
        ↓
 Host ceremonies (morning, recoupling, dump, finale)
        ↓
-Per-islander decide() → LLM or stub
+triggers.pick_trigger() → earned hideaway / pull-aside / singles chat / challenge (max 1/day)
+       ↓
+Per-islander decide() → validate → retry if mandatory → seeded default → fallback log
        ↓
 EventLog → logs/experiments/<id>/<condition>/<run>/events.jsonl
        ↓
@@ -42,6 +44,7 @@ remember() / note_chat() → per-islander context
 |------|-------|
 | Change villa rules / prompt constitution | `src/li_sim/agent.py` |
 | Change ceremony behaviour | `src/li_sim/host.py` |
+| Change earned reward triggers | `src/li_sim/triggers.py`, `data/schedule.yaml` |
 | Change memory / contact tracking | `src/li_sim/memory.py` |
 | Change roster or season shape | `data/islanders.yaml`, `data/schedule.yaml` |
 | Change logging / viewer | `src/li_sim/logging_utils.py`, `viewer/` |

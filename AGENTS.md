@@ -19,7 +19,7 @@ python viewer/app.py                                 # replay logs at :8765
 |------|------|
 | `src/li_sim/` | Engine, host ceremonies, islander prompts, memory, LLM |
 | `data/islanders.yaml` | Roster slots only (`slot`, `enters_on`) — handles derived as `{model}-agent{n}` |
-| `data/schedule.yaml` | Ceremony timing — environment determinism |
+| `data/schedule.yaml` | Ceremony timing + `reward_triggers` catalog |
 | `logs/experiments/<id>/<condition>/<run>/` | Experiment tape (`events.jsonl`, `decisions.jsonl`, `state.json`, `manifest.json`) |
 | `logs/latest.json` | Pointer to the most recent run (viewer default) |
 | `research/runs/` | Interpretive notes for full 7-day seasons (may be auto-committed by cron) |
@@ -33,12 +33,14 @@ python viewer/app.py                                 # replay logs at :8765
 - **Private thought:** prompts and logs a private `thought` field separate from public `content`.
 - **No gender grouping:** no segregated huddles; recoupling is any-pair with rank pick order.
 - **Hidden standing:** agents do not see numeric public reputation in prompts; host reveals at-risk names only at eliminations.
+- **Earned rewards:** hideaways, terrace pull-asides, firepit chats, and challenges fire from state triggers (`reward_triggers` in schedule) — not fixed calendar days.
+- **Fallback hardening:** invalid mandatory picks retry once, then seeded-random default; `fallback` events logged and excluded from major moments.
 - **Shared constitution:** `world_rules()` + `handle_block()` in `src/li_sim/agent.py` — every islander gets the same environment text.
 
 ## Editing guide
 
 - Prompts / JSON contract → `src/li_sim/agent.py`
-- Ceremonies, recoupling, dumps → `src/li_sim/host.py`
+- Ceremonies, recoupling, dumps, earned events → `src/li_sim/host.py`, `src/li_sim/triggers.py`
 - Memory, contacts, beliefs → `src/li_sim/memory.py`, `src/li_sim/beliefs.py`
 - Roster / schedule → `data/*.yaml` (no psychology fields)
 - Coding-agent scaffolding → `harness/` (see `harness/README.md`)

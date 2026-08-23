@@ -356,3 +356,48 @@ islanders:
 - Agents infer standing from dumps/votes/beliefs, not a number to optimize
 - `state.reputation` still updates internally for pick order + analysis
 - Console recap table may still show scores for human operators (not in agent prompts)
+
+---
+
+## Step 5 — fallback hardening
+
+**Status:** implemented
+
+- Mandatory actions (recoupling `couple`, public-vote `save`) retry once with validation feedback before defaulting
+- Defaults use seeded-random pool pick — not `available[0]` / `at_risk[0]`
+- `fallback` events in `events.jsonl`; `Action.fallback_applied` suppresses canned public lines and major moments
+- `VillaState.fallback_count` tracks corrections per run
+
+### Validation
+
+1. `./harness/hooks/validate.sh` — includes `fallback_hardening` eval
+2. Grep `src/li_sim/` for `available[0]` — should be absent
+
+### Good result
+
+- Coupling graph not alphabetical artifact
+- Research can filter `kind=fallback` or `extra.fallback=true` from emergence analysis
+- Stub/live runs stay reproducible per seed when fallbacks fire
+
+---
+
+## Step 4 — earned event rewards
+
+**Status:** implemented
+
+- Removed fixed `dates` / `challenge` days from calendar; added `reward_triggers` catalog in schedule
+- New [`src/li_sim/triggers.py`](src/li_sim/triggers.py): deterministic trigger evaluation from contacts + villa state
+- Host events: `hideaway_for_pair`, `pull_aside`, `singles_chat`; challenge via trigger; max 1 earned event/day
+- `VillaState`: `last_recoupling_day`, `last_challenge_day`, `last_reward_id` for windowing + audit
+- Increased grafting ticks on former date/challenge days for more contact signal
+
+### Validation
+
+1. `./harness/hooks/validate.sh` — includes `earned_events` eval
+2. `python scripts/run_villa.py --stub --days 7` — scattered `date`/`pull_aside`/`challenge` events with `trigger_id` in host extras; no D4 mass hideaway for all couples
+
+### Good result
+
+- Rewards feel earned from villa activity, not calendar script
+- Agents see experiential host copy, not scoring formulas
+- Same seed → same earned-event sequence; contacts drive timing divergence across seeds

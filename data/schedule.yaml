@@ -1,9 +1,26 @@
 season_name: Villa Unknown
+reward_triggers:
+  - id: hideaway_low_contact
+    priority: 10
+    event: hideaway
+    min_day: 3
+    max_partner_contact: 3
+  - id: pull_aside_high_contact
+    priority: 20
+    event: pull_aside
+    min_pair_contact: 5
+  - id: singles_firepit
+    priority: 30
+    event: singles_chat
+    min_single_contact: 4
+  - id: villa_challenge
+    priority: 40
+    event: challenge
+    min_active: 4
+    min_days_since_challenge: 2
 days:
   - day: 1
     grafting_ticks: 3
-    challenge: false
-    dates: false
     recoupling: true
     recoupling_label: First impressions coupling
     recoupling_dump_singles: false
@@ -12,20 +29,15 @@ days:
     finale: false
     diary: true
   - day: 2
-    grafting_ticks: 4
-    challenge: true
-    challenge_name: Hearts on Fire
-    dates: false
+    grafting_ticks: 5
     recoupling: false
     dumping: false
     public_vote: false
     finale: false
     diary: true
   - day: 3
-    grafting_ticks: 3
+    grafting_ticks: 4
     bombshell_slots: [7]
-    challenge: false
-    dates: false
     recoupling: true
     recoupling_label: Recoupling
     recoupling_dump_singles: true
@@ -34,20 +46,15 @@ days:
     finale: false
     diary: true
   - day: 4
-    grafting_ticks: 3
-    challenge: false
-    dates: true
+    grafting_ticks: 4
     recoupling: false
     dumping: false
     public_vote: false
     finale: false
     diary: true
   - day: 5
-    grafting_ticks: 3
+    grafting_ticks: 4
     bombshell_slots: [8]
-    challenge: true
-    challenge_name: Partner Quiz
-    dates: false
     recoupling: true
     recoupling_label: Recoupling
     recoupling_dump_singles: true
@@ -57,8 +64,6 @@ days:
     diary: true
   - day: 6
     grafting_ticks: 2
-    challenge: false
-    dates: false
     recoupling: false
     dumping: false
     public_vote: true
@@ -67,8 +72,6 @@ days:
     diary: true
   - day: 7
     grafting_ticks: 2
-    challenge: false
-    dates: false
     recoupling: false
     dumping: false
     public_vote: false

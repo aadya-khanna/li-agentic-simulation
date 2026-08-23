@@ -8,10 +8,13 @@ import yaml
 from .agent import (
     WORLD_ACTIONS,
     decision_user_prompt,
+    needs_mandatory_fix,
     parse_allowed,
+    public_line,
     system_prompt,
     validate_target,
 )
+from .fallbacks import retry_prompt_suffix
 from .beliefs import update_beliefs_for_day
 from .brief import print_brief_panel, summarize_events, write_brief_log
 from .config import DATA_DIR, Settings, agent_handle, islander_model, model_slug
@@ -37,6 +40,7 @@ from .models import (
 from .prompts import grafting_extra, scene_reply_extra
 from .recap import print_day, print_finale, print_open
 from .rng import seeded_rng
+from .triggers import fire_trigger, pick_trigger
 from .runs import write_latest_pointer
 
 
@@ -140,6 +144,9 @@ class Simulation:
         allowed: list[ActionType],
         extra: str,
         scene: bool,
+        *,
+        mandatory: bool = False,
+        available: list[str] | None = None,
     ) -> Action:
         system = system_prompt(profile, self.settings)
         user = decision_user_prompt(
@@ -147,7 +154,61 @@ class Simulation:
         )
         parsed_action, raw_dict, raw_text, model = self.llm.decide_action(profile.name, system, user)
         parsed = parse_allowed(parsed_action, allowed)
-        validated, notes = validate_target(parsed, self.state, profile.name)
+        validated, notes = validate_target(
+            parsed,
+            self.state,
+            profile.name,
+            available=available,
+            settings=self.settings,
+            apply_defaults=False,
+        )
+        retried = False
+
+        if mandatory and needs_mandatory_fix(validated, allowed, available):
+            retry_user = user + retry_prompt_suffix(notes or ["mandatory action invalid"])
+            parsed_action, raw_dict, raw_text, model = self.llm.decide_action(
+                profile.name, system, retry_user
+            )
+            parsed = parse_allowed(parsed_action, allowed)
+            validated, notes = validate_target(
+                parsed,
+                self.state,
+                profile.name,
+                available=available,
+                settings=self.settings,
+                apply_defaults=False,
+            )
+            retried = True
+
+        if mandatory and needs_mandatory_fix(validated, allowed, available):
+            validated, default_notes = validate_target(
+                validated,
+                self.state,
+                profile.name,
+                available=available,
+                settings=self.settings,
+                apply_defaults=True,
+            )
+            notes = (notes or []) + default_notes
+            validated.fallback_applied = True
+
+        if not mandatory:
+            validated, default_notes = validate_target(
+                validated,
+                self.state,
+                profile.name,
+                available=available,
+                settings=self.settings,
+                apply_defaults=True,
+            )
+            if default_notes:
+                notes = (notes or []) + default_notes
+                validated.fallback_applied = True
+
+        if validated.fallback_applied:
+            self._log_fallback(profile.name, notes or [], validated)
+            self.state.fallback_count += 1
+
         me = self.state.islanders[profile.name]
         memory_refs = [f"D{m.day} {m.phase}: {m.text[:80]}" for m in me.memories[-6:]]
         trace = DecisionTrace(
@@ -164,12 +225,29 @@ class Simulation:
             raw_response=raw_text,
             parsed_action=parsed.model_dump(mode="json"),
             validated_action=validated.model_dump(mode="json"),
-            validation_notes=notes,
+            validation_notes=(notes or []) + (["retried"] if retried else []),
             stub=self.settings.stub or model.startswith("stub"),
         )
         self.log.write_decision(trace)
         self.log_inner_thought(profile.name, validated)
         return validated
+
+    def _log_fallback(self, actor: str, notes: list[str], action: Action) -> None:
+        event = LogEvent(
+            day=self.state.day,
+            phase=self.state.phase.value,
+            tick=self.state.tick,
+            kind="fallback",
+            actor=actor,
+            target=action.target,
+            visibility=Visibility.HOST.value,
+            text="; ".join(notes),
+            extra={
+                "notes": notes,
+                "corrected_action": action.model_dump(mode="json"),
+            },
+        )
+        self.log.write(event)
 
     def log_inner_thought(self, name: str, action: Action) -> None:
         text = (action.thought or "").strip()
@@ -234,7 +312,7 @@ class Simulation:
         kind = "whisper" if whisper else "speak"
         vis = Visibility.WHISPER.value if whisper else Visibility.LOCATION.value
         turns = [
-            (speaker, target, opening.content or f"{speaker} corners {target}.", opening.thought, opening)
+            (speaker, target, public_line(opening, f"{speaker} corners {target}."), opening.thought, opening)
         ]
         # Target replies, optional extra beats
         max_turns = max(2, min(self.settings.scene_turns, 4))
@@ -251,7 +329,7 @@ class Simulation:
                 extra,
                 True,
             )
-            line = action.content or f"{actor} looks at {other}."
+            line = public_line(action, f"{actor} looks at {other}.")
             turns.append((actor, other, line, action.thought, action))
             last_line = line
             last_actor = actor
@@ -278,10 +356,11 @@ class Simulation:
         note_chat(state, speaker, target, kind=kind)
         if not whisper:
             loc = tg.location.value
-            record_moment(
-                state,
-                f"{speaker} and {target} had a public chat at the {loc}.",
-            )
+            if not opening.fallback_applied:
+                record_moment(
+                    state,
+                    f"{speaker} and {target} had a public chat at the {loc}.",
+                )
 
     def grafting_tick(self) -> None:
         state = self.state
@@ -308,7 +387,7 @@ class Simulation:
                     actor=name,
                     location=me.location.value,
                     visibility=Visibility.LOCATION.value,
-                    text=action.content or f"{name} goes to the {me.location.value}.",
+                    text=public_line(action, f"{name} goes to the {me.location.value}."),
                     thought=action.thought,
                 )
                 self.log.write(event)
@@ -324,7 +403,7 @@ class Simulation:
                     actor=name,
                     location=Location.DIARY_ROOM.value,
                     visibility=Visibility.PRIVATE.value,
-                    text=action.content or f"{name} checks in with the camera.",
+                    text=public_line(action, f"{name} checks in with the camera."),
                     thought=action.thought,
                 )
                 self.log.write(event)
@@ -357,10 +436,19 @@ class Simulation:
                 kind="pass",
                 actor=name,
                 visibility=Visibility.PRIVATE.value,
-                text=action.content or f"{name} stays put.",
+                text=public_line(action, f"{name} stays put."),
                 thought=action.thought,
             )
             self.log.write(event)
+
+    def _fire_earned_rewards(self) -> None:
+        if not self.schedule.reward_triggers:
+            return
+        picked = pick_trigger(self.state, self.schedule.reward_triggers, self.settings)
+        if not picked:
+            return
+        spec, payload = picked
+        fire_trigger(self.host, self.state, spec, payload, self.decide, self.settings)
 
     def run_day(self, plan: DayPlan) -> None:
         state = self.state
@@ -373,10 +461,6 @@ class Simulation:
         for tick in range(plan.grafting_ticks):
             state.tick = tick + 1
             self.grafting_tick()
-        if plan.challenge:
-            self.host.challenge(state, self.decide, plan.challenge_name or "Villa Challenge")
-        if plan.dates:
-            self.host.dates(state, self.decide)
         if plan.recoupling:
             self.host.recoupling(
                 state,
@@ -388,6 +472,7 @@ class Simulation:
             self.host.public_vote_save(state, self.decide, plan.at_risk_count)
         if plan.dumping:
             self.host.dumping(state, self.decide, plan.dump_count, plan.dump_mode)
+        self._fire_earned_rewards()
         if plan.diary and not plan.finale:
             self.host.diary_round(state, self.decide)
         if self.settings.belief_updates and not plan.finale:

@@ -21,7 +21,7 @@ def _load(name: str):
 
 def main() -> int:
     failed = 0
-    for name in ("prompt_invariants", "smoke_season", "brief_log", "reproducibility", "seed_variation", "decision_trace", "research_summarizer", "belief_memory", "no_gender", "neutral_handles", "hidden_standing"):
+    for name in ("prompt_invariants", "smoke_season", "brief_log", "reproducibility", "seed_variation", "decision_trace", "research_summarizer", "belief_memory", "no_gender", "neutral_handles", "hidden_standing", "earned_events", "fallback_hardening"):
         print(f"-- eval: {name} --")
         mod = _load(name)
         try:

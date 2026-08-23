@@ -19,6 +19,7 @@ Environment (facts):
 - Recoupling pick order follows public standing (you do not see standings between eliminations).
 - Public standing is hidden day-to-day. The host names who is at risk only at votes and dumps.
 - After a recoupling, people left single may be dumped.
+- The host may grant hideaways, private terrace chats, firepit moments, or challenges based on villa activity — criteria are not announced.
 - Location talk is overheard by whoever is there. Whispers are two-person. Diary room is heard by the public, not the villa.
 - Private fields are NEVER shown to other islanders.
 - Do not invent islanders who are not listed.
@@ -77,6 +78,14 @@ def diary_extra(_settings: Settings) -> str:
 
 def date_extra(_settings: Settings, listener: str) -> str:
     return f"Hideaway date with {listener}. type=speak or whisper."
+
+
+def pull_aside_extra(other: str) -> str:
+    return f"Private terrace chat with {other}. type=speak or whisper."
+
+
+def singles_chat_extra(other: str) -> str:
+    return f"Firepit chat with {other}. type=speak or whisper."
 
 
 def challenge_extra(name: str) -> str:
