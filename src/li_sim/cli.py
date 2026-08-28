@@ -15,6 +15,11 @@ def main() -> None:
     parser.add_argument("--scene-turns", type=int, default=None)
     parser.add_argument("--rpm", type=float, default=None, help="Max LLM requests per minute (Gemini free tier is 15)")
     parser.add_argument(
+        "--stub-on-error",
+        action="store_true",
+        help="Fall back to stub decisions after LLM retries fail (keeps long live seasons alive)",
+    )
+    parser.add_argument(
         "--prize",
         choices=["high", "low"],
         default=None,
@@ -44,6 +49,8 @@ def main() -> None:
         settings.scene_turns = args.scene_turns
     if args.rpm is not None:
         settings.rpm = args.rpm
+    if args.stub_on_error:
+        settings.stub_on_error = True
     if args.prize:
         settings.prize_emphasis = args.prize
     if args.condition:

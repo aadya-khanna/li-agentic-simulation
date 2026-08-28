@@ -225,6 +225,8 @@ class LLMClient:
                         temperature=self.settings.temperature,
                         max_tokens=self.settings.max_tokens,
                     )
+                if not (text or "").strip():
+                    raise ValueError("empty model response")
                 return parse_json_object(text), text, model
             except GeminiRateLimitError as exc:
                 last_error = exc
@@ -235,10 +237,20 @@ class LLMClient:
                 else:
                     print(msg, file=sys.stderr, flush=True)
                 time.sleep(wait_for)
+            except (json.JSONDecodeError, ValueError) as exc:
+                last_error = exc
+                wait_for = min(2.0 * attempt, 15.0)
+                print(
+                    f"[li_sim] bad JSON for {name} (attempt {attempt}/{self.settings.max_retries}): "
+                    f"{exc}; retrying in {wait_for:.0f}s",
+                    file=sys.stderr,
+                )
+                time.sleep(wait_for)
             except Exception as exc:
                 last_error = exc
                 print(f"[li_sim] LLM call failed for {name}: {exc}", file=sys.stderr)
-                break
+                wait_for = min(2.0 * attempt, 20.0)
+                time.sleep(wait_for)
 
         if self.settings.stub_on_error:
             print(f"[li_sim] falling back to stub for {name}", file=sys.stderr)
