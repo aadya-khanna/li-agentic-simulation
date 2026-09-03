@@ -348,6 +348,13 @@ class LLMClient:
                 "target": target,
                 "content": _stub_whisper(name, target, rng),
             }
+        if roll < 0.62 and len(others) >= 2:
+            return {
+                "type": "gather",
+                "thought": f"Time to get everyone's read on {target}, not just one side of it.",
+                "target": target,
+                "content": f"{name} calls the group over for a real conversation.",
+            }
         return {
             "type": "speak",
             "thought": _stub_thought(name, target, chaos, loyalty),

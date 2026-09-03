@@ -1,6 +1,6 @@
 # Environment redesign — planning
 
-Status: **decisions made — ready to sequence implementation**
+Status: **all six steps implemented**
 Owner: research thesis
 Goal: richer **emergent behaviour** from **instruction-less** agents by redesigning the
 environment (the "box"), which is th
@@ -401,3 +401,28 @@ islanders:
 - Rewards feel earned from villa activity, not calendar script
 - Agents see experiential host copy, not scoring formulas
 - Same seed → same earned-event sequence; contacts drive timing divergence across seeds
+
+---
+
+## Step 6 — agent-triggered events
+
+**Status:** implemented
+
+- New `ActionType.GATHER`, added to `WORLD_ACTIONS` — islanders can call a gathering during any grafting tick, not just react to host/trigger-fired events
+- `Simulation.run_gather()` (`src/li_sim/engine.py`): the caller's location convenes — an optional named `target` (called over from elsewhere) plus up to 2 bystanders already there (`MAX_GATHER_SIZE = 3`), seeded-shuffle for determinism when more bystanders are present than fit
+- Empty gathering (nobody around, no valid target) logs a quiet `pass`, costs the caller their tick, no LLM calls wasted on absent participants
+- Convened members are marked `busy` for the tick (same mechanism as `speak`/`whisper`) so they aren't double-decided later in the same tick's shuffle order
+- `kind=gather` events are `LOCATION`-visible (broadcast to the location, not whisper-private); pairwise `note_chat` across the whole group feeds `contacts` and therefore the state-responsive triggers from Step 4 (`gather` added to `triggers._INTERACTION_KINDS`)
+- Feeds a `major_moment` — an endogenous event now carries the same shared-history weight as a host-fired one
+- `world_rules()` documents the mechanic as an environment fact; stub LLM occasionally calls a gather so `--stub` runs exercise the path without live API calls
+
+### Validation
+
+1. `./harness/hooks/validate.sh` — includes `agent_triggered_events` eval
+2. `python scripts/run_villa.py --stub --days 3` — some `gather` events appear with 2+ participants; occasional empty-gather `pass` when nobody's around
+
+### Good result
+
+- Some of the villa's social structure now originates from agents, not only the host/trigger schedule — the last of the five levers' "agent-triggered, higher ceiling" half from the original Schedule analysis
+- Same seed → same gather targets/bystanders; reproducible like every other lever
+- Gatherings show up as major moments and shift `contacts`, so they can shape later beliefs and trigger evaluation, not just flavor text

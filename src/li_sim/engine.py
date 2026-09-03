@@ -37,7 +37,7 @@ from .models import (
     VillaState,
     Visibility,
 )
-from .prompts import grafting_extra, scene_reply_extra
+from .prompts import gather_extra, grafting_extra, scene_reply_extra
 from .recap import print_day, print_finale, print_open
 from .rng import seeded_rng
 from .triggers import fire_trigger, pick_trigger
@@ -362,6 +362,85 @@ class Simulation:
                     f"{speaker} and {target} had a public chat at the {loc}.",
                 )
 
+    MAX_GATHER_SIZE = 3  # caller + up to 2 others
+
+    def run_gather(self, host_name: str, opening: Action, busy: set[str]) -> None:
+        """Agent-initiated group event — the endogenous counterpart to host.pull_aside."""
+        state = self.state
+        host = state.islanders[host_name]
+        if opening.location:
+            host.location = opening.location
+        loc = host.location
+
+        candidates: list[str] = []
+        if opening.target and opening.target != host_name and opening.target not in busy:
+            candidates.append(opening.target)
+        bystanders = [
+            n
+            for n in state.at_location(loc)
+            if n != host_name and n not in busy and n not in candidates
+        ]
+        seeded_rng(self.settings.seed, "gather", state.day, state.tick, host_name).shuffle(bystanders)
+        candidates.extend(bystanders)
+        group = candidates[: self.MAX_GATHER_SIZE - 1]
+
+        if not group:
+            event = LogEvent(
+                day=state.day,
+                phase=state.phase.value,
+                tick=state.tick,
+                kind="pass",
+                actor=host_name,
+                visibility=Visibility.PRIVATE.value,
+                text=f"{host_name} tries to call a gathering, but no one's around.",
+                thought=opening.thought,
+            )
+            self.log.write(event)
+            return
+
+        busy.update(group)
+        all_names = [host_name] + group
+        for member in group:
+            state.islanders[member].location = loc
+
+        def log_turn(actor: str, line: str, thought: str) -> None:
+            event = LogEvent(
+                day=state.day,
+                phase=state.phase.value,
+                tick=state.tick,
+                kind="gather",
+                actor=actor,
+                participants=all_names,
+                location=loc.value,
+                visibility=Visibility.LOCATION.value,
+                text=line,
+                thought=thought,
+            )
+            self.log.write(event)
+            self.broadcast(event)
+            state.islanders[actor].last_thought = thought or ""
+
+        log_turn(
+            host_name,
+            public_line(opening, f"{host_name} calls a gathering at the {loc.value}."),
+            opening.thought,
+        )
+        for member in group:
+            profile = self.profiles[member]
+            extra = gather_extra(host_name, all_names)
+            action = self.decide(profile, [ActionType.SPEAK, ActionType.PASS], extra, True)
+            if action.type == ActionType.PASS:
+                continue
+            log_turn(member, public_line(action, f"{member} joins in."), action.thought)
+
+        for i, a in enumerate(all_names):
+            for b in all_names[i + 1 :]:
+                note_chat(state, a, b, kind="speak")
+        record_moment(
+            state,
+            f"{host_name} called a gathering at the {loc.value} with {', '.join(group)}.",
+        )
+
     def grafting_tick(self) -> None:
         state = self.state
         state.phase = Phase.GRAFTING
@@ -392,6 +471,11 @@ class Simulation:
                 )
                 self.log.write(event)
                 self.broadcast(event)
+                continue
+
+            if action.type == ActionType.GATHER:
+                busy.add(name)
+                self.run_gather(name, action, busy)
                 continue
 
             if action.type == ActionType.DIARY:

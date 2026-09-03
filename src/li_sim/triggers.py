@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 CHALLENGE_NAMES = ("Hearts on Fire", "Partner Quiz", "Blindfold Kiss", "Villa Challenge")
 
-_INTERACTION_KINDS = frozenset({"speak", "whisper", "date", "pull_aside", "singles_chat"})
+_INTERACTION_KINDS = frozenset({"speak", "whisper", "date", "pull_aside", "singles_chat", "gather"})
 
 
 def partner_contact(state: VillaState, a: str, b: str, since_day: int) -> int:

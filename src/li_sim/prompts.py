@@ -20,6 +20,7 @@ Environment (facts):
 - Public standing is hidden day-to-day. The host names who is at risk only at votes and dumps.
 - After a recoupling, people left single may be dumped.
 - The host may grant hideaways, private terrace chats, firepit moments, or challenges based on villa activity — criteria are not announced.
+- You may call a gathering yourself (type=gather): whoever is at your location joins, plus a named target if you call them over. If nobody's around, nothing happens.
 - Location talk is overheard by whoever is there. Whispers are two-person. Diary room is heard by the public, not the villa.
 - Private fields are NEVER shown to other islanders.
 - Do not invent islanders who are not listed.
@@ -86,6 +87,11 @@ def pull_aside_extra(other: str) -> str:
 
 def singles_chat_extra(other: str) -> str:
     return f"Firepit chat with {other}. type=speak or whisper."
+
+
+def gather_extra(host: str, group: list[str]) -> str:
+    others = ", ".join(n for n in group if n != host)
+    return f"{host} called this gathering. In it: {others}. Whoever's at the location hears you. type=speak or pass."
 
 
 def challenge_extra(name: str) -> str:

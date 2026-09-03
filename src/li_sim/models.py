@@ -39,6 +39,7 @@ class ActionType(str, Enum):
     SAVE = "save"
     PASS = "pass"
     CHALLENGE = "challenge"
+    GATHER = "gather"
 
 
 class Visibility(str, Enum):

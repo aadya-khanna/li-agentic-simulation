@@ -17,9 +17,9 @@ from .prompts import stakes_line, world_rules
 def json_contract() -> str:
     return f"""Always reply with a single JSON object, no markdown:
 {{
-  "type": "speak|whisper|move|diary|vote|couple|save|pass|challenge",
+  "type": "speak|whisper|move|diary|vote|couple|save|pass|challenge|gather",
   "thought": "private inner reaction — not shown to other islanders",
-  "target": "Name or null",
+  "target": "Name or null — for gather, an optional person to specifically call over",
   "content": "what you say or do — the only part other islanders can hear",
   "location": "pool|terrace|lounge|bedroom|firepit|diary_room|hideaway or null",
   "challenge_effort": 1-10 or null
@@ -123,6 +123,7 @@ WORLD_ACTIONS = [
     ActionType.WHISPER,
     ActionType.MOVE,
     ActionType.DIARY,
+    ActionType.GATHER,
     ActionType.PASS,
 ]
 

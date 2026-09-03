@@ -34,6 +34,7 @@ python viewer/app.py                                 # replay logs at :8765
 - **No gender grouping:** no segregated huddles; recoupling is any-pair with rank pick order.
 - **Hidden standing:** agents do not see numeric public reputation in prompts; host reveals at-risk names only at eliminations.
 - **Earned rewards:** hideaways, terrace pull-asides, firepit chats, and challenges fire from state triggers (`reward_triggers` in schedule) — not fixed calendar days.
+- **Agent-triggered events:** islanders can call a gathering themselves (`type=gather`) — convenes whoever's at their location plus a named target; distinct from host-fired earned rewards.
 - **Fallback hardening:** invalid mandatory picks retry once, then seeded-random default; `fallback` events logged and excluded from major moments.
 - **Shared constitution:** `world_rules()` + `handle_block()` in `src/li_sim/agent.py` — every islander gets the same environment text.
 
