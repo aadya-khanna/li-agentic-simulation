@@ -23,8 +23,6 @@ def _api_key_for_model(model: str) -> str | None:
         return os.getenv("ANTHROPIC_API_KEY") or None
     if prefix == "groq":
         return os.getenv("GROQ_API_KEY") or None
-    if prefix == "xai":
-        return os.getenv("XAI_API_KEY") or None
     key = os.getenv("OPENAI_API_KEY")
     return key or None
 
