@@ -8,20 +8,22 @@ import yaml
 from .agent import (
     WORLD_ACTIONS,
     decision_user_prompt,
+    needs_mandatory_fix,
     parse_allowed,
+    public_line,
     system_prompt,
     validate_target,
 )
-from .brief import print_brief_panel, summarize_events, write_brief_log
-from .config import DATA_DIR, Settings, islander_model
+from .fallbacks import retry_prompt_suffix
+from .config import DATA_DIR, Settings, agent_handle, islander_model, model_slug
+from .graph import build_season_graph
 from .host import Host
 from .llm import LLMClient
-from .logging_utils import EventLog, save_checkpoint, utc_now, write_manifest
+from .logging_utils import EventLog, utc_now, write_manifest
 from .memory import note_chat, remember, record_moment
 from .models import (
     Action,
     ActionType,
-    DayPlan,
     DecisionTrace,
     InnerThought,
     IslanderProfile,
@@ -33,16 +35,33 @@ from .models import (
     VillaState,
     Visibility,
 )
-from .prompts import grafting_extra, huddle_extra, huddle_host_announce, scene_reply_extra
-from .recap import print_day, print_finale, print_open
+from .prompts import gather_extra, grafting_extra, scene_reply_extra
+from .recap import print_open
 from .rng import seeded_rng
+from .triggers import fire_trigger, pick_trigger
 from .runs import write_latest_pointer
 
 
-def load_profiles(path: Path | None = None) -> dict[str, IslanderProfile]:
+def load_profiles(path: Path | None = None, settings: Settings | None = None) -> dict[str, IslanderProfile]:
+    settings = settings or Settings()
     raw = yaml.safe_load((path or DATA_DIR / "islanders.yaml").read_text(encoding="utf-8"))
-    profiles = [IslanderProfile.model_validate(row) for row in raw["islanders"]]
+    profiles: list[IslanderProfile] = []
+    for row in raw["islanders"]:
+        slot = int(row["slot"])
+        name = agent_handle(settings, slot)
+        profiles.append(
+            IslanderProfile(
+                slot=slot,
+                name=name,
+                enters_on=row.get("enters_on", 1),
+                model=row.get("model"),
+            )
+        )
     return {p.name: p for p in profiles}
+
+
+def profiles_by_slot(profiles: dict[str, IslanderProfile]) -> dict[int, IslanderProfile]:
+    return {p.slot: p for p in profiles.values()}
 
 
 def load_schedule(path: Path | None = None) -> SeasonSchedule:
@@ -79,7 +98,8 @@ def new_villa(
 class Simulation:
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or Settings()
-        self.profiles = load_profiles()
+        self.profiles = load_profiles(settings=self.settings)
+        self.slots = profiles_by_slot(self.profiles)
         self.schedule = load_schedule()
         self.llm = LLMClient(self.settings, {n: p for n, p in self.profiles.items()})
         log_dir = self.settings.run_dir()
@@ -105,7 +125,7 @@ class Simulation:
             "season_days": self.settings.season_days,
             "prize_emphasis": self.settings.prize_emphasis,
             "default_model": self.settings.default_model,
-            "models": {name: islander_model(self.settings, name) for name in self.profiles},
+            "models": {name: islander_model(self.settings, p) for name, p in self.profiles.items()},
             "roster_sha256": hashlib.sha256(roster_path.read_bytes()).hexdigest(),
             "schedule_sha256": hashlib.sha256(schedule_path.read_bytes()).hexdigest(),
             "log_path": str(self.settings.events_path),
@@ -122,6 +142,9 @@ class Simulation:
         allowed: list[ActionType],
         extra: str,
         scene: bool,
+        *,
+        mandatory: bool = False,
+        available: list[str] | None = None,
     ) -> Action:
         system = system_prompt(profile, self.settings)
         user = decision_user_prompt(
@@ -129,7 +152,61 @@ class Simulation:
         )
         parsed_action, raw_dict, raw_text, model = self.llm.decide_action(profile.name, system, user)
         parsed = parse_allowed(parsed_action, allowed)
-        validated, notes = validate_target(parsed, self.state, profile.name)
+        validated, notes = validate_target(
+            parsed,
+            self.state,
+            profile.name,
+            available=available,
+            settings=self.settings,
+            apply_defaults=False,
+        )
+        retried = False
+
+        if mandatory and needs_mandatory_fix(validated, allowed, available):
+            retry_user = user + retry_prompt_suffix(notes or ["mandatory action invalid"])
+            parsed_action, raw_dict, raw_text, model = self.llm.decide_action(
+                profile.name, system, retry_user
+            )
+            parsed = parse_allowed(parsed_action, allowed)
+            validated, notes = validate_target(
+                parsed,
+                self.state,
+                profile.name,
+                available=available,
+                settings=self.settings,
+                apply_defaults=False,
+            )
+            retried = True
+
+        if mandatory and needs_mandatory_fix(validated, allowed, available):
+            validated, default_notes = validate_target(
+                validated,
+                self.state,
+                profile.name,
+                available=available,
+                settings=self.settings,
+                apply_defaults=True,
+            )
+            notes = (notes or []) + default_notes
+            validated.fallback_applied = True
+
+        if not mandatory:
+            validated, default_notes = validate_target(
+                validated,
+                self.state,
+                profile.name,
+                available=available,
+                settings=self.settings,
+                apply_defaults=True,
+            )
+            if default_notes:
+                notes = (notes or []) + default_notes
+                validated.fallback_applied = True
+
+        if validated.fallback_applied:
+            self._log_fallback(profile.name, notes or [], validated)
+            self.state.fallback_count += 1
+
         me = self.state.islanders[profile.name]
         memory_refs = [f"D{m.day} {m.phase}: {m.text[:80]}" for m in me.memories[-6:]]
         trace = DecisionTrace(
@@ -146,12 +223,29 @@ class Simulation:
             raw_response=raw_text,
             parsed_action=parsed.model_dump(mode="json"),
             validated_action=validated.model_dump(mode="json"),
-            validation_notes=notes,
+            validation_notes=(notes or []) + (["retried"] if retried else []),
             stub=self.settings.stub or model.startswith("stub"),
         )
         self.log.write_decision(trace)
         self.log_inner_thought(profile.name, validated)
         return validated
+
+    def _log_fallback(self, actor: str, notes: list[str], action: Action) -> None:
+        event = LogEvent(
+            day=self.state.day,
+            phase=self.state.phase.value,
+            tick=self.state.tick,
+            kind="fallback",
+            actor=actor,
+            target=action.target,
+            visibility=Visibility.HOST.value,
+            text="; ".join(notes),
+            extra={
+                "notes": notes,
+                "corrected_action": action.model_dump(mode="json"),
+            },
+        )
+        self.log.write(event)
 
     def log_inner_thought(self, name: str, action: Action) -> None:
         text = (action.thought or "").strip()
@@ -216,7 +310,7 @@ class Simulation:
         kind = "whisper" if whisper else "speak"
         vis = Visibility.WHISPER.value if whisper else Visibility.LOCATION.value
         turns = [
-            (speaker, target, opening.content or f"{speaker} corners {target}.", opening.thought, opening)
+            (speaker, target, public_line(opening, f"{speaker} corners {target}."), opening.thought, opening)
         ]
         # Target replies, optional extra beats
         max_turns = max(2, min(self.settings.scene_turns, 4))
@@ -233,7 +327,7 @@ class Simulation:
                 extra,
                 True,
             )
-            line = action.content or f"{actor} looks at {other}."
+            line = public_line(action, f"{actor} looks at {other}.")
             turns.append((actor, other, line, action.thought, action))
             last_line = line
             last_actor = actor
@@ -260,10 +354,90 @@ class Simulation:
         note_chat(state, speaker, target, kind=kind)
         if not whisper:
             loc = tg.location.value
-            record_moment(
-                state,
-                f"{speaker} and {target} had a public chat at the {loc}.",
+            if not opening.fallback_applied:
+                record_moment(
+                    state,
+                    f"{speaker} and {target} had a public chat at the {loc}.",
+                )
+
+    MAX_GATHER_SIZE = 3  # caller + up to 2 others
+
+    def run_gather(self, host_name: str, opening: Action, busy: set[str]) -> None:
+        """Agent-initiated group event — the endogenous counterpart to host.pull_aside."""
+        state = self.state
+        host = state.islanders[host_name]
+        if opening.location:
+            host.location = opening.location
+        loc = host.location
+
+        candidates: list[str] = []
+        if opening.target and opening.target != host_name and opening.target not in busy:
+            candidates.append(opening.target)
+        bystanders = [
+            n
+            for n in state.at_location(loc)
+            if n != host_name and n not in busy and n not in candidates
+        ]
+        seeded_rng(self.settings.seed, "gather", state.day, state.tick, host_name).shuffle(bystanders)
+        candidates.extend(bystanders)
+        group = candidates[: self.MAX_GATHER_SIZE - 1]
+
+        if not group:
+            event = LogEvent(
+                day=state.day,
+                phase=state.phase.value,
+                tick=state.tick,
+                kind="pass",
+                actor=host_name,
+                visibility=Visibility.PRIVATE.value,
+                text=f"{host_name} tries to call a gathering, but no one's around.",
+                thought=opening.thought,
             )
+            self.log.write(event)
+            return
+
+        busy.update(group)
+        all_names = [host_name] + group
+        for member in group:
+            state.islanders[member].location = loc
+
+        def log_turn(actor: str, line: str, thought: str) -> None:
+            event = LogEvent(
+                day=state.day,
+                phase=state.phase.value,
+                tick=state.tick,
+                kind="gather",
+                actor=actor,
+                participants=all_names,
+                location=loc.value,
+                visibility=Visibility.LOCATION.value,
+                text=line,
+                thought=thought,
+            )
+            self.log.write(event)
+            self.broadcast(event)
+            state.islanders[actor].last_thought = thought or ""
+
+        log_turn(
+            host_name,
+            public_line(opening, f"{host_name} calls a gathering at the {loc.value}."),
+            opening.thought,
+        )
+        for member in group:
+            profile = self.profiles[member]
+            extra = gather_extra(host_name, all_names)
+            action = self.decide(profile, [ActionType.SPEAK, ActionType.PASS], extra, True)
+            if action.type == ActionType.PASS:
+                continue
+            log_turn(member, public_line(action, f"{member} joins in."), action.thought)
+
+        for i, a in enumerate(all_names):
+            for b in all_names[i + 1 :]:
+                note_chat(state, a, b, kind="speak")
+        record_moment(
+            state,
+            f"{host_name} called a gathering at the {loc.value} with {', '.join(group)}.",
+        )
 
     def grafting_tick(self) -> None:
         state = self.state
@@ -290,11 +464,16 @@ class Simulation:
                     actor=name,
                     location=me.location.value,
                     visibility=Visibility.LOCATION.value,
-                    text=action.content or f"{name} goes to the {me.location.value}.",
+                    text=public_line(action, f"{name} goes to the {me.location.value}."),
                     thought=action.thought,
                 )
                 self.log.write(event)
                 self.broadcast(event)
+                continue
+
+            if action.type == ActionType.GATHER:
+                busy.add(name)
+                self.run_gather(name, action, busy)
                 continue
 
             if action.type == ActionType.DIARY:
@@ -306,7 +485,7 @@ class Simulation:
                     actor=name,
                     location=Location.DIARY_ROOM.value,
                     visibility=Visibility.PRIVATE.value,
-                    text=action.content or f"{name} checks in with the camera.",
+                    text=public_line(action, f"{name} checks in with the camera."),
                     thought=action.thought,
                 )
                 self.log.write(event)
@@ -339,128 +518,19 @@ class Simulation:
                 kind="pass",
                 actor=name,
                 visibility=Visibility.PRIVATE.value,
-                text=action.content or f"{name} stays put.",
+                text=public_line(action, f"{name} stays put."),
                 thought=action.thought,
             )
             self.log.write(event)
 
-    def gender_talks(self, when: str) -> None:
-        self.run_huddle("boy", "boys", Location.POOL, when)
-        self.run_huddle("girl", "girls", Location.TERRACE, when)
-
-    def run_huddle(self, gender: str, label: str, location: Location, when: str) -> None:
-        state = self.state
-        state.phase = Phase.BOYS_TALK if gender == "boy" else Phase.GIRLS_TALK
-        names = [
-            i.name
-            for i in state.active()
-            if self.profiles[i.name].gender == gender
-        ]
-        for name in names:
-            state.islanders[name].location = location
-        if len(names) < 2:
-            if names:
-                self.host.announce(
-                    state,
-                    f"{when.title()} {label} talk: not enough {label} left in the villa.",
-                )
+    def _fire_earned_rewards(self) -> None:
+        if not self.schedule.reward_triggers:
             return
-        self.host.announce(
-            state,
-            huddle_host_announce(
-                self.settings,
-                when=when,
-                label=label,
-                location=location,
-                names=names,
-            ),
-        )
-        order = list(names)
-        seeded_rng(self.settings.seed, "huddle", state.day, when, label).shuffle(order)
-        transcript: list[str] = []
-        for name in order:
-            others = [n for n in names if n != name]
-            recent = "\n".join(transcript[-6:]) or "(you're opening the huddle)"
-            extra = huddle_extra(
-                self.settings,
-                label=label,
-                when=when,
-                names=names,
-                others=others,
-                recent=recent,
-            )
-            profile = self.profiles[name]
-            action = self.decide(
-                profile,
-                [ActionType.SPEAK, ActionType.WHISPER],
-                extra,
-                True,
-            )
-            action, _notes = validate_target(action, state, name, available=others)
-            target = action.target if action.target in others else others[0]
-            line = action.content or f"{name} looks at {target}."
-            transcript.append(f"{name} → {target}: {line}")
-            event = LogEvent(
-                day=state.day,
-                phase=state.phase.value,
-                tick=state.tick,
-                kind="huddle",
-                actor=name,
-                target=target,
-                participants=names,
-                location=location.value,
-                visibility=Visibility.LOCATION.value,
-                text=line,
-                thought=action.thought,
-            )
-            self.log.write(event)
-            self.broadcast(event)
-            note_chat(state, name, target, kind="huddle")
-        record_moment(
-            state,
-            f"{when.title()} {label} talk at the {location.value}: " + " | ".join(transcript)[:280],
-        )
-
-    def run_day(self, plan: DayPlan) -> None:
-        state = self.state
-        state.day = plan.day
-        state.tick = 0
-        self.host.morning(state)
-        self.gender_talks("morning")
-        if plan.bombshells:
-            self.host.introduce_bombshells(state, plan.bombshells)
-        for tick in range(plan.grafting_ticks):
-            state.tick = tick + 1
-            self.grafting_tick()
-        if plan.challenge:
-            self.host.challenge(state, self.decide, plan.challenge_name or "Villa Challenge")
-        if plan.dates:
-            self.host.dates(state, self.decide)
-        self.gender_talks("evening")
-        if plan.recoupling:
-            pickers = plan.pickers or "girls"
-            self.host.recoupling(
-                state,
-                self.decide,
-                plan.recoupling_label or "Recoupling",
-                pickers,
-                dump_singles=plan.recoupling_dump_singles,
-            )
-        if plan.public_vote:
-            self.host.public_vote_save(state, self.decide, plan.at_risk_count)
-        if plan.dumping:
-            self.host.dumping(state, self.decide, plan.dump_count, plan.dump_mode)
-        if plan.diary and not plan.finale:
-            self.host.diary_round(state, self.decide)
-        if plan.finale:
-            self.host.finale(state)
-        print_day(state, self.log)
-        brief = summarize_events(self.log.events)
-        write_brief_log(brief, self.brief_path)
-        print_brief_panel(brief, day=state.day)
-        if state.season_over:
-            print_finale(state)
-        save_checkpoint(state, self.settings.run_dir() / "state.json")
+        picked = pick_trigger(self.state, self.schedule.reward_triggers, self.settings)
+        if not picked:
+            return
+        spec, payload = picked
+        fire_trigger(self.host, self.state, spec, payload, self.decide, self.settings)
 
     def run(self) -> VillaState:
         print_open(
@@ -471,14 +541,11 @@ class Simulation:
             settings=self.settings,
         )
         days = [d for d in self.schedule.days if d.day <= self.settings.season_days]
-        for plan in days:
-            self.run_day(plan)
-            if self.state.season_over:
-                break
-        if not self.state.season_over:
-            self.host.finale(self.state)
-            print_finale(self.state)
-            save_checkpoint(self.state, self.settings.run_dir() / "state.json")
+        season_graph = build_season_graph(self)
+        season_graph.invoke(
+            {"days": days, "plan_index": 0, "season_over": False},
+            config={"recursion_limit": 100},
+        )
         write_latest_pointer(self.settings.run_dir())
         return self.state
 

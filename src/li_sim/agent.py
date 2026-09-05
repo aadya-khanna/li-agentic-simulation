@@ -1,5 +1,8 @@
-from __future__ import annotations 
+from __future__ import annotations
+
+from .beliefs import format_beliefs, format_reflections
 from .config import Settings
+from .fallbacks import pick_from_pool
 from .memory import format_contacts, format_major_moments, format_memories, retrieve
 from .models import (
     Action,
@@ -14,9 +17,9 @@ from .prompts import stakes_line, world_rules
 def json_contract() -> str:
     return f"""Always reply with a single JSON object, no markdown:
 {{
-  "type": "speak|whisper|move|diary|vote|couple|save|pass|challenge",
+  "type": "speak|whisper|move|diary|vote|couple|save|pass|challenge|gather",
   "thought": "private inner reaction — not shown to other islanders",
-  "target": "Name or null",
+  "target": "Name or null — for gather, an optional person to specifically call over",
   "content": "what you say or do — the only part other islanders can hear",
   "location": "pool|terrace|lounge|bedroom|firepit|diary_room|hideaway or null",
   "challenge_effort": 1-10 or null
@@ -30,8 +33,7 @@ def handle_block(profile: IslanderProfile) -> str:
 You have no assigned personality, occupation, hometown, secrets, or private goal.
 You are free to be whoever you want in this villa. Invent yourself from what happens.
 Do not roleplay a pre-written Love Island archetype.
-Game grouping (a villa rule, not a personality): you sit with the {profile.gender}s
-for huddles. Recoupling pick-order may follow that grouping; who you pick does not have to.
+Recoupling pick order follows public standing — not identity labels.
 """
 
 
@@ -46,9 +48,11 @@ def _couple_map(state: VillaState) -> str:
     return "Couples: " + "; ".join(bits) + "." + extra
 
 
-def _reputation_line(state: VillaState) -> str:
-    parts = [f"{n}={state.reputation.get(n, 50):.0f}" for n in state.active_names()]
-    return "Public reputation: " + ", ".join(parts)
+def _standing_line() -> str:
+    return (
+        "Public standing: hidden between eliminations. "
+        "Infer from host announcements when someone is at risk or dumped."
+    )
 
 
 def system_prompt(profile: IslanderProfile, settings: Settings | None = None) -> str:
@@ -82,7 +86,7 @@ Day {state.day}, phase={state.phase.value}, tick={state.tick}.
 {stakes_block}Public votes put people at risk; safe islanders then choose who to save.
 You are at the {me.location.value}. People here: {', '.join(loc_people) or 'just you'}.
 {_couple_map(state)}
-{_reputation_line(state)}
+{_standing_line()}
 Dumped: {', '.join(state.dumped) or 'nobody'}.
 
 MAJOR MOMENTS (shared villa history — treat as fact):
@@ -91,7 +95,13 @@ MAJOR MOMENTS (shared villa history — treat as fact):
 Your conversations so far (who you've actually talked with — not scores):
 {format_contacts(me, others)}
 
-What you personally remember:
+YOUR IMPRESSIONS (private belief — may diverge from shared facts):
+{format_beliefs(me, others)}
+
+YOUR REFLECTIONS (private diary thoughts):
+{format_reflections(me)}
+
+RECENT EPISODES (salient events persist; mundane chatter fades):
 {format_memories(memories)}
 
 ALLOWED ACTIONS: {allowed_s}
@@ -113,8 +123,17 @@ WORLD_ACTIONS = [
     ActionType.WHISPER,
     ActionType.MOVE,
     ActionType.DIARY,
+    ActionType.GATHER,
     ActionType.PASS,
 ]
+
+
+def public_line(action: Action, default: str) -> str:
+    if action.content:
+        return action.content
+    if action.fallback_applied:
+        return ""
+    return default
 
 
 def validate_target(
@@ -123,10 +142,12 @@ def validate_target(
     actor: str,
     *,
     available: list[str] | None = None,
+    settings: Settings | None = None,
+    apply_defaults: bool = True,
 ) -> tuple[Action, list[str]]:
     notes: list[str] = []
-    active = set(state.active_names())
-    pool = set(available) if available is not None else active
+    pool = set(available) if available is not None else set(state.active_names())
+
     if action.target and action.target not in pool:
         notes.append(f"target {action.target!r} not in pool; cleared")
         action.target = None
@@ -138,20 +159,70 @@ def validate_target(
         ):
             notes.append(f"forced {action.type.value} -> pass")
             action.type = ActionType.PASS
-        if action.type == ActionType.COUPLE and available:
-            action.target = available[0]
-            notes.append(f"couple target defaulted to {action.target}")
+
     if action.target == actor:
         notes.append("target was self; cleared")
         action.target = None
         if action.type in (ActionType.SPEAK, ActionType.WHISPER):
             notes.append(f"forced {action.type.value} -> pass")
             action.type = ActionType.PASS
-        if action.type == ActionType.COUPLE and available:
-            action.target = next((n for n in available if n != actor), None)
-            if action.target:
-                notes.append(f"couple target defaulted to {action.target}")
+
+    if apply_defaults and settings is not None:
+        action, default_notes = _apply_defaults(action, state, actor, available, settings)
+        notes.extend(default_notes)
+    elif apply_defaults and action.type == ActionType.MOVE and action.location is None:
+        action.location = Location.TERRACE
+        notes.append("move location defaulted to terrace")
+
+    return action, notes
+
+
+def _apply_defaults(
+    action: Action,
+    state: VillaState,
+    actor: str,
+    available: list[str] | None,
+    settings: Settings,
+) -> tuple[Action, list[str]]:
+    notes: list[str] = []
+
+    if action.type == ActionType.COUPLE and available:
+        choices = [n for n in available if n != actor]
+        if choices and (not action.target or action.target not in choices):
+            action.target = pick_from_pool(
+                settings,
+                state.day,
+                state.phase.value,
+                actor,
+                "couple",
+                pool=choices,
+            )
+            notes.append(f"couple target defaulted (seeded) to {action.target}")
+
+    if action.type in (ActionType.SAVE, ActionType.VOTE) and available:
+        choices = list(available)
+        if choices and (not action.target or action.target not in choices):
+            action.type = ActionType.SAVE
+            action.target = pick_from_pool(
+                settings,
+                state.day,
+                state.phase.value,
+                actor,
+                "save",
+                pool=choices,
+            )
+            notes.append(f"save target defaulted (seeded) to {action.target}")
+
     if action.type == ActionType.MOVE and action.location is None:
         action.location = Location.TERRACE
         notes.append("move location defaulted to terrace")
+
     return action, notes
+
+
+def needs_mandatory_fix(action: Action, allowed: list[ActionType], available: list[str] | None) -> bool:
+    if ActionType.COUPLE in allowed and available:
+        return action.type != ActionType.COUPLE or not action.target or action.target not in available
+    if ActionType.SAVE in allowed and available:
+        return action.type not in (ActionType.SAVE, ActionType.VOTE) or not action.target or action.target not in available
+    return False

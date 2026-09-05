@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from .agent import parse_allowed, validate_target
+from .agent import parse_allowed, public_line, validate_target
 from .config import Settings
 from .llm import LLMClient
 from .logging_utils import EventLog
@@ -13,7 +13,9 @@ from .prompts import (
     date_extra,
     diary_extra,
     morning_host_suffix,
+    pull_aside_extra,
     recoupling_prize_suffix,
+    singles_chat_extra,
 )
 from .rng import seeded_rng
 from .models import (
@@ -81,9 +83,20 @@ class Host:
             + morning_host_suffix(self.settings),
         )
 
-    def challenge(self, state: VillaState, decide: DecideFn, name: str) -> None:
+    def challenge(
+        self,
+        state: VillaState,
+        decide: DecideFn,
+        name: str,
+        *,
+        trigger_id: str = "",
+        extra: dict | None = None,
+    ) -> None:
         state.phase = Phase.CHALLENGE
-        self.announce(state, challenge_host_copy(name, self.settings))
+        host_extra = dict(extra or {})
+        if trigger_id:
+            host_extra["trigger_id"] = trigger_id
+        self.announce(state, challenge_host_copy(name, self.settings), extra=host_extra or None)
         scores: dict[str, float] = {}
         for islander in state.active():
             profile = self.profiles[islander.name]
@@ -107,7 +120,7 @@ class Host:
                     phase=state.phase.value,
                     kind="challenge",
                     actor=islander.name,
-                    text=action.content or f"{islander.name} scores {score:.1f}.",
+                    text=public_line(action, f"{islander.name} competed in {name}."),
                     thought=action.thought,
                     visibility=Visibility.PUBLIC.value,
                     extra={"score": score},
@@ -121,13 +134,169 @@ class Host:
                         phase=state.phase.value,
                         kind="challenge",
                         actor=islander.name,
-                        text=f"{islander.name} scored {score:.1f} in {name}.",
+                        text=f"{islander.name} competed in {name}.",
                         visibility=Visibility.PUBLIC.value,
                     ),
                 )
         winner = max(scores, key=scores.get)
         state.reputation[winner] += 4
-        self.announce(state, f"{winner} wins {name}. Public reputation ticks up.")
+        self.announce(state, f"{winner} wins {name}.")
+
+    def hideaway_for_pair(
+        self,
+        state: VillaState,
+        a: str,
+        b: str,
+        decide: DecideFn,
+        *,
+        trigger_id: str = "",
+        extra: dict | None = None,
+    ) -> None:
+        state.phase = Phase.DATES
+        host_extra = {"targets": [a, b], **(extra or {})}
+        if trigger_id:
+            host_extra["trigger_id"] = trigger_id
+        self.announce(
+            state,
+            f"The host sends {a} and {b} to the hideaway — what is said there stays mostly between you.",
+            extra=host_extra,
+        )
+        left = state.islanders[a]
+        right = state.islanders[b]
+        left.location = Location.HIDEAWAY
+        right.location = Location.HIDEAWAY
+        for speaker_name, listener_name in ((a, b), (b, a)):
+            profile = self.profiles[speaker_name]
+            action = decide(
+                profile,
+                [ActionType.SPEAK, ActionType.WHISPER, ActionType.PASS],
+                date_extra(self.settings, listener_name),
+                True,
+            )
+            line = public_line(action, f"{speaker_name} looks at {listener_name} and goes quiet.")
+            event = LogEvent(
+                day=state.day,
+                phase=state.phase.value,
+                kind="date",
+                actor=speaker_name,
+                target=listener_name,
+                participants=[a, b],
+                location=Location.HIDEAWAY.value,
+                visibility=Visibility.WHISPER.value,
+                text=line,
+                thought=action.thought,
+            )
+            self.log.write(event)
+            remember(state.islanders[a], event)
+            remember(state.islanders[b], event)
+        note_chat(state, a, b, kind="date")
+        left.location = Location.LOUNGE
+        right.location = Location.LOUNGE
+        record_moment(state, f"{a} and {b} went on a hideaway date.")
+
+    def pull_aside(
+        self,
+        state: VillaState,
+        a: str,
+        b: str,
+        decide: DecideFn,
+        *,
+        trigger_id: str = "",
+        extra: dict | None = None,
+    ) -> None:
+        state.phase = Phase.GRAFTING
+        host_extra = {"targets": [a, b], **(extra or {})}
+        if trigger_id:
+            host_extra["trigger_id"] = trigger_id
+        self.announce(
+            state,
+            f"The host pulls {a} and {b} aside for a private chat on the terrace.",
+            extra=host_extra,
+        )
+        left = state.islanders[a]
+        right = state.islanders[b]
+        left.location = Location.TERRACE
+        right.location = Location.TERRACE
+        for speaker_name, listener_name in ((a, b), (b, a)):
+            profile = self.profiles[speaker_name]
+            action = decide(
+                profile,
+                [ActionType.SPEAK, ActionType.WHISPER, ActionType.PASS],
+                pull_aside_extra(listener_name),
+                True,
+            )
+            line = public_line(action, f"{speaker_name} speaks quietly with {listener_name}.")
+            event = LogEvent(
+                day=state.day,
+                phase=state.phase.value,
+                kind="pull_aside",
+                actor=speaker_name,
+                target=listener_name,
+                participants=[a, b],
+                location=Location.TERRACE.value,
+                visibility=Visibility.WHISPER.value,
+                text=line,
+                thought=action.thought,
+            )
+            self.log.write(event)
+            remember(state.islanders[a], event)
+            remember(state.islanders[b], event)
+        note_chat(state, a, b, kind="whisper")
+        left.location = Location.LOUNGE
+        right.location = Location.LOUNGE
+        record_moment(state, f"{a} and {b} were pulled aside by the host.")
+
+    def singles_chat(
+        self,
+        state: VillaState,
+        single: str,
+        other: str,
+        decide: DecideFn,
+        *,
+        trigger_id: str = "",
+        extra: dict | None = None,
+    ) -> None:
+        state.phase = Phase.GRAFTING
+        host_extra = {"targets": [single, other], **(extra or {})}
+        if trigger_id:
+            host_extra["trigger_id"] = trigger_id
+        self.announce(
+            state,
+            f"The host invites {single} and {other} to the firepit for a chat.",
+            extra=host_extra,
+        )
+        left = state.islanders[single]
+        right = state.islanders[other]
+        left.location = Location.FIREPIT
+        right.location = Location.FIREPIT
+        for speaker_name, listener_name in ((single, other), (other, single)):
+            profile = self.profiles[speaker_name]
+            action = decide(
+                profile,
+                [ActionType.SPEAK, ActionType.WHISPER, ActionType.PASS],
+                singles_chat_extra(listener_name),
+                True,
+            )
+            line = public_line(action, f"{speaker_name} speaks to {listener_name} at the firepit.")
+            event = LogEvent(
+                day=state.day,
+                phase=state.phase.value,
+                kind="singles_chat",
+                actor=speaker_name,
+                target=listener_name,
+                participants=[single, other],
+                location=Location.FIREPIT.value,
+                visibility=Visibility.LOCATION.value,
+                text=line,
+                thought=action.thought,
+            )
+            self.log.write(event)
+            for person in (single, other):
+                remember(state.islanders[person], event)
+        note_chat(state, single, other, kind="speak")
+        left.location = Location.LOUNGE
+        right.location = Location.LOUNGE
+        record_moment(state, f"{single} and {other} had a firepit chat hosted by the villa.")
 
     def introduce_bombshells(self, state: VillaState, names: list[str]) -> None:
         for name in names:
@@ -170,73 +339,24 @@ class Host:
             extra={"dumped": name},
         )
 
-    def dates(self, state: VillaState, decide: DecideFn) -> None:
-        state.phase = Phase.DATES
-        pairs = state.couples()
-        if not pairs:
-            self.announce(state, "No couples, no dates.")
-            return
-        self.announce(state, "Date night. Couples head to the hideaway — what is said there stays mostly between you.")
-        for a, b in pairs:
-            left = state.islanders[a]
-            right = state.islanders[b]
-            left.location = Location.HIDEAWAY
-            right.location = Location.HIDEAWAY
-            for speaker_name, listener_name in ((a, b), (b, a)):
-                profile = self.profiles[speaker_name]
-                action = decide(
-                    profile,
-                    [ActionType.SPEAK, ActionType.WHISPER, ActionType.PASS],
-                    date_extra(self.settings, listener_name),
-                    True,
-                )
-                line = action.content or f"{speaker_name} looks at {listener_name} and goes quiet."
-                event = LogEvent(
-                    day=state.day,
-                    phase=state.phase.value,
-                    kind="date",
-                    actor=speaker_name,
-                    target=listener_name,
-                    participants=[a, b],
-                    location=Location.HIDEAWAY.value,
-                    visibility=Visibility.WHISPER.value,
-                    text=line,
-                    thought=action.thought,
-                )
-                self.log.write(event)
-                remember(state.islanders[a], event)
-                remember(state.islanders[b], event)
-            note_chat(state, a, b, kind="date")
-            left.location = Location.LOUNGE
-            right.location = Location.LOUNGE
-        self.announce(state, "Dates are over.")
-        for a, b in pairs:
-            record_moment(state, f"{a} and {b} went on a hideaway date.")
-
     def recoupling(
         self,
         state: VillaState,
         decide: DecideFn,
         label: str,
-        pickers: str,
         dump_singles: bool = False,
     ) -> None:
         state.phase = Phase.RECOUPLING
         for islander in state.active():
             islander.location = Location.FIREPIT
-        picker_names = [
-            i.name
-            for i in state.active()
-            if self.profiles[i.name].gender == ("girl" if pickers == "girls" else "boy")
-        ]
         bombshells_today = [
             i.name
             for i in state.active()
             if i.is_bombshell and i.entered_day == state.day
         ]
-        order = bombshells_today + [n for n in picker_names if n not in bombshells_today]
-        if not order:
-            order = state.active_names()
+        rest = [n for n in state.active_names() if n not in bombshells_today]
+        ranked = sorted(rest, key=lambda n: state.reputation.get(n, 50), reverse=True)
+        order = bombshells_today + ranked
         incoming = ", ".join(f"{a} & {b}" for a, b in state.couples()) or "no official couples yet"
         bombshell_note = (
             f" {', '.join(bombshells_today)} just arrived and pick first."
@@ -281,20 +401,24 @@ class Host:
                 "Someone already in a couple is still pickable. Whether you take them or leave them is your judgement. "
                 "The villa does not forbid it and does not require it. Speech as you pick them."
             )
-            action = decide(profile, [ActionType.COUPLE], extra, False)
+            action = decide(profile, [ActionType.COUPLE], extra, False, mandatory=True, available=available)
             parsed = parse_allowed(action, [ActionType.COUPLE])
             action, _notes = validate_target(
                 parsed,
                 state,
                 name,
                 available=available,
+                settings=self.settings,
+                apply_defaults=True,
             )
-            target = action.target if action.target in available else available[0]
+            target = action.target
+            if not target or target not in available:
+                continue
             taken.add(name)
             taken.add(target)
             displaced = _couple_up(state, name, target)
             new_pairs.append(tuple(sorted((name, target))))
-            speech = action.content or f"{name} chooses {target}."
+            speech = public_line(action, f"{name} chooses {target}.")
             event = LogEvent(
                 day=state.day,
                 phase=state.phase.value,
@@ -306,6 +430,7 @@ class Host:
                 visibility=Visibility.PUBLIC.value,
                 text=speech,
                 thought=action.thought,
+                extra={"fallback": action.fallback_applied},
             )
             self.log.write(event)
             for person in state.active():
@@ -313,7 +438,8 @@ class Host:
             moment = f"{name} picked {target} at recoupling."
             if displaced:
                 moment += f" Left single: {', '.join(displaced)}."
-            record_moment(state, moment)
+            if not action.fallback_applied:
+                record_moment(state, moment)
 
         for a, b in new_pairs:
             state.reputation[a] = state.reputation.get(a, 50) + 2
@@ -339,6 +465,7 @@ class Host:
                     name,
                     "you weren't picked. That's the recoupling rule.",
                 )
+        state.last_recoupling_day = state.day
 
     def dumping(self, state: VillaState, decide: DecideFn, dump_count: int, mode: str) -> None:
         state.phase = Phase.DUMPING
@@ -347,7 +474,7 @@ class Host:
         self.announce(
             state,
             "Dumping. The villa votes for who they want to SAVE. "
-            "Lowest combined safety (votes + reputation, singles first) may leave.",
+            "Lowest save votes may leave; singles are most exposed.",
         )
         votes: dict[str, int] = {n: 0 for n in state.active_names()}
         for islander in state.active():
@@ -376,7 +503,7 @@ class Host:
                 participants=state.active_names(),
                 location=Location.FIREPIT.value,
                 visibility=Visibility.PUBLIC.value,
-                text=action.content or f"{islander.name} saves {target}.",
+                text=public_line(action, f"{islander.name} saves {target}."),
                 thought=action.thought,
                 extra={"votes": dict(votes)},
             )
@@ -400,12 +527,10 @@ class Host:
         ranked = sorted(active, key=lambda n: state.reputation.get(n, 50))
         at_risk = ranked[:at_risk_count]
         safe = [n for n in active if n not in at_risk]
-        board = ", ".join(f"{n} ({state.reputation.get(n, 50):.0f})" for n in reversed(ranked))
         self.announce(
             state,
-            "I've got a text! The public has voted for their favourite islanders. "
-            f"Public standings: {board}. "
-            f"At risk: {', '.join(at_risk)}. "
+            "I've got a text! The public has voted. "
+            f"At risk tonight: {', '.join(at_risk)}. "
             "The public does not dump you directly — the safe islanders now choose who to SAVE.",
         )
         saves: dict[str, int] = {n: 0 for n in at_risk}
@@ -417,15 +542,26 @@ class Host:
                 f"type=save, target MUST be one of: {', '.join(at_risk)}. "
                 "The at-risk islander with the fewest save votes is dumped."
             )
-            action = decide(profile, [ActionType.SAVE, ActionType.VOTE], extra, False)
+            action = decide(
+                profile,
+                [ActionType.SAVE, ActionType.VOTE],
+                extra,
+                False,
+                mandatory=True,
+                available=at_risk,
+            )
             parsed = parse_allowed(action, [ActionType.SAVE, ActionType.VOTE])
             action, _notes = validate_target(
                 parsed,
                 state,
                 name,
                 available=at_risk,
+                settings=self.settings,
+                apply_defaults=True,
             )
-            target = action.target if action.target in at_risk else at_risk[0]
+            target = action.target
+            if not target or target not in at_risk:
+                continue
             saves[target] += 1
             event = LogEvent(
                 day=state.day,
@@ -436,9 +572,9 @@ class Host:
                 participants=active,
                 location=Location.FIREPIT.value,
                 visibility=Visibility.PUBLIC.value,
-                text=action.content or f"{name} saves {target}.",
+                text=public_line(action, f"{name} saves {target}."),
                 thought=action.thought,
-                extra={"saves": dict(saves), "at_risk": at_risk},
+                extra={"saves": dict(saves), "at_risk": at_risk, "fallback": action.fallback_applied},
             )
             self.log.write(event)
             for person in state.active():
@@ -468,7 +604,7 @@ class Host:
                 diary_extra(self.settings),
                 False,
             )
-            text = action.content or f"{islander.name} shrugs at the camera."
+            text = public_line(action, f"{islander.name} shrugs at the camera.")
             event = LogEvent(
                 day=state.day,
                 phase=state.phase.value,
@@ -482,11 +618,6 @@ class Host:
             self.log.write(event)
             remember(islander, event)
             islander.last_thought = action.thought
-            # Public likes honesty-shaped diary content a little
-            bump = 1.2 if any(w in text.lower() for w in ("love", "sorry", "real", "choose")) else 0.4
-            if any(w in text.lower() for w in ("game", "win", "public", "final")):
-                bump -= 0.2
-            state.reputation[islander.name] = state.reputation.get(islander.name, 50) + bump
             islander.location = original
             if action.thought:
                 islander.reflections.append(f"D{state.day}: {action.thought}")
@@ -513,11 +644,9 @@ class Host:
         _, w1, w2 = scored[0]
         state.winner_couple = [w1, w2]
         state.season_over = True
-        ranking = ", ".join(f"{a} & {b} ({tot:.0f})" for tot, a, b in scored)
         self.announce(
             state,
-            f"The public has voted. {w1} and {w2} win Love Island and the £50,000. "
-            f"Couple scores: {ranking}.",
+            f"The public has voted. {w1} and {w2} win Love Island and the £50,000.",
             kind="win",
             extra={"winners": [w1, w2], "ranking": [[a, b, tot] for tot, a, b in scored]},
         )
