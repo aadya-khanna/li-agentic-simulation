@@ -15,17 +15,15 @@ from .agent import (
     validate_target,
 )
 from .fallbacks import retry_prompt_suffix
-from .beliefs import update_beliefs_for_day
-from .brief import print_brief_panel, summarize_events, write_brief_log
 from .config import DATA_DIR, Settings, agent_handle, islander_model, model_slug
+from .graph import build_season_graph
 from .host import Host
 from .llm import LLMClient
-from .logging_utils import EventLog, save_checkpoint, utc_now, write_manifest
+from .logging_utils import EventLog, utc_now, write_manifest
 from .memory import note_chat, remember, record_moment
 from .models import (
     Action,
     ActionType,
-    DayPlan,
     DecisionTrace,
     InnerThought,
     IslanderProfile,
@@ -38,7 +36,7 @@ from .models import (
     Visibility,
 )
 from .prompts import gather_extra, grafting_extra, scene_reply_extra
-from .recap import print_day, print_finale, print_open
+from .recap import print_open
 from .rng import seeded_rng
 from .triggers import fire_trigger, pick_trigger
 from .runs import write_latest_pointer
@@ -534,43 +532,6 @@ class Simulation:
         spec, payload = picked
         fire_trigger(self.host, self.state, spec, payload, self.decide, self.settings)
 
-    def run_day(self, plan: DayPlan) -> None:
-        state = self.state
-        state.day = plan.day
-        state.tick = 0
-        self.host.morning(state)
-        if plan.bombshell_slots:
-            names = [self.slots[s].name for s in plan.bombshell_slots if s in self.slots]
-            self.host.introduce_bombshells(state, names)
-        for tick in range(plan.grafting_ticks):
-            state.tick = tick + 1
-            self.grafting_tick()
-        if plan.recoupling:
-            self.host.recoupling(
-                state,
-                self.decide,
-                plan.recoupling_label or "Recoupling",
-                dump_singles=plan.recoupling_dump_singles,
-            )
-        if plan.public_vote:
-            self.host.public_vote_save(state, self.decide, plan.at_risk_count)
-        if plan.dumping:
-            self.host.dumping(state, self.decide, plan.dump_count, plan.dump_mode)
-        self._fire_earned_rewards()
-        if plan.diary and not plan.finale:
-            self.host.diary_round(state, self.decide)
-        if self.settings.belief_updates and not plan.finale:
-            update_beliefs_for_day(state, self.profiles, self.llm, self.log, self.settings)
-        if plan.finale:
-            self.host.finale(state)
-        print_day(state, self.log)
-        brief = summarize_events(self.log.events)
-        write_brief_log(brief, self.brief_path)
-        print_brief_panel(brief, day=state.day)
-        if state.season_over:
-            print_finale(state)
-        save_checkpoint(state, self.settings.run_dir() / "state.json")
-
     def run(self) -> VillaState:
         print_open(
             self.state,
@@ -580,14 +541,11 @@ class Simulation:
             settings=self.settings,
         )
         days = [d for d in self.schedule.days if d.day <= self.settings.season_days]
-        for plan in days:
-            self.run_day(plan)
-            if self.state.season_over:
-                break
-        if not self.state.season_over:
-            self.host.finale(self.state)
-            print_finale(self.state)
-            save_checkpoint(self.state, self.settings.run_dir() / "state.json")
+        season_graph = build_season_graph(self)
+        season_graph.invoke(
+            {"days": days, "plan_index": 0, "season_over": False},
+            config={"recursion_limit": 100},
+        )
         write_latest_pointer(self.settings.run_dir())
         return self.state
 
