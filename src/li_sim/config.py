@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .models import IslanderProfile
+
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "data"
 LOG_DIR = ROOT / "logs"
@@ -36,6 +38,7 @@ class Settings(BaseSettings):
     scene_turns: int = 3
     season_days: int = 7
     memory_limit: int = 18
+    belief_updates: bool = True
     rpm: float = 8.0
     max_retries: int = 8
     stub_on_error: bool = False
@@ -45,13 +48,6 @@ class Settings(BaseSettings):
     experiment_id: str = "local"
     run_id: str = Field(default_factory=_default_run_id)
 
-    model_maya: str | None = None
-    model_luca: str | None = None
-    model_zara: str | None = None
-    model_theo: str | None = None
-    model_nia: str | None = None
-    model_kai: str | None = None
-
     def run_dir(self) -> Path:
         return LOG_DIR / "experiments" / self.experiment_id / self.prompt_condition / self.run_id
 
@@ -60,7 +56,17 @@ class Settings(BaseSettings):
         return self.run_dir() / "events.jsonl"
 
 
-def islander_model(settings: Settings, name: str) -> str:
-    attr = f"model_{name.lower()}"
-    override = getattr(settings, attr, None)
-    return override or settings.default_model
+def model_slug(settings: Settings) -> str:
+    """Short family slug from default_model (e.g. gemini/gemini-flash-lite-latest → gemini)."""
+    raw = settings.default_model
+    if "/" in raw:
+        raw = raw.split("/", 1)[1]
+    return raw.split("-")[0].lower()
+
+
+def agent_handle(settings: Settings, slot: int) -> str:
+    return f"{model_slug(settings)}-agent{slot}"
+
+
+def islander_model(settings: Settings, profile: IslanderProfile) -> str:
+    return profile.model or settings.default_model

@@ -23,6 +23,7 @@ KIND_STYLE = {
     "challenge": "bright_blue",
     "date": "pink1",
     "huddle": "bright_magenta",
+    "gather": "bright_green",
     "move": "dim",
     "pass": "dim",
     "thought": "italic gold1",
@@ -51,7 +52,7 @@ def print_open(
     for p in profiles.values():
         late = f" · bombshell day {p.enters_on}" if p.enters_on > 1 else ""
         intro.append(f"{p.name}", style="bold")
-        intro.append(f" — handle ({p.gender}s huddle){late}\n")
+        intro.append(f" — handle{late}\n")
     console.print(Panel(intro, title="Love Island Agentic Simulation", border_style="magenta"))
 
 
@@ -87,6 +88,7 @@ def _append_event(body: Text, event: LogEvent) -> None:
         "challenge": "challenge",
         "date": "date",
         "huddle": "huddle",
+        "gather": "gather",
         "move": "move",
         "speak": "talk",
         "pass": "beat",
