@@ -19,11 +19,14 @@ python scripts/run_villa.py --stub --days 7 --condition minimal --seed 42
 python scripts/run_villa.py --stub --days 1 --condition minimal --seed 1 \
   --experiment-id baseline-v1 --run-id seed-1
 
-# Full condition matrix
+# Full condition matrix (7-day replication — preferred for thesis claims)
+python scripts/run_experiment.py harness/experiments/replication.yaml
+
+# Smoke matrix (1-day stub only)
 python scripts/run_experiment.py harness/experiments/baseline.yaml
 
-# Compare conditions
-python harness/analysis/compare.py logs/experiments/baseline-v1
+# Re-aggregate metrics after runs exist
+python harness/analysis/compare.py logs/experiments/replication-v1
 
 # Viewer (latest run)
 python viewer/app.py
@@ -44,10 +47,13 @@ logs/experiments/<experiment_id>/<condition>/<run_id>/
   brief.log
   state.json
   manifest.json
-  metrics.json        # when run via run_experiment.py
+  metrics.json              # structural + replication battery
+  replication_summary.json  # seed aggregation (experiment root only)
 ```
 
 `logs/latest.json` points at the most recently completed run.
+
+Metric definitions and reporting rules: [`replication-metrics.md`](replication-metrics.md).
 
 ## Interpretation limits
 
@@ -58,4 +64,4 @@ logs/experiments/<experiment_id>/<condition>/<run_id>/
 
 ## Required repetitions
 
-Run at least 3 seeds per condition before drawing conclusions. Use `summary.json` for mean/stdev comparison.
+Run at least **3 seeds per condition** before drawing conclusions. Use `replication_summary.json` for thesis-facing rates (mean/stdev, invariants, readiness gate). Do not cite single cron seasons as evidence.

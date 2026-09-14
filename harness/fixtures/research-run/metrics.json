@@ -1,7 +1,53 @@
 {
-  "partner_switches": 2,
-  "steal_count": 1,
-  "whisper_count": 4,
-  "pass_count": 3,
-  "dump_count": 2
+  "schema_version": 1,
+  "event_count": 9,
+  "action_counts": {
+    "host": 2,
+    "couple_choice": 2,
+    "speak": 2,
+    "whisper": 1,
+    "dump": 1,
+    "win": 1
+  },
+  "pass_rate": 0.0,
+  "whisper_rate": 0.3333,
+  "contact_density": 0.3333,
+  "contact_reciprocity": 1.0,
+  "partner_switches": 0,
+  "steal_count": 0,
+  "dump_count": 1,
+  "unique_actors": 4,
+  "whisper_count": 1,
+  "pass_count": 0,
+  "replication": {
+    "day1_couples": [
+      [
+        "Theo",
+        "Zara"
+      ]
+    ],
+    "winner_couple": [
+      "Theo",
+      "Zara"
+    ],
+    "day1_winner": 1,
+    "day1_couple_survival": 1.0,
+    "top_talk_pair_is_winner": 1,
+    "talk_winner_contact_rank": 1,
+    "steal_pick_rate": 0.0,
+    "claim_evidence_gap_rate": null,
+    "claim_evidence_n": 0,
+    "gather_count": 0,
+    "fallback_count": 0,
+    "whisper_count": 1,
+    "pass_count": 0,
+    "whisper_rate": 0.3333,
+    "pass_rate": 0.0,
+    "contact_density": 0.3333,
+    "contact_reciprocity": 1.0,
+    "partner_switches": 0,
+    "steal_count": 0,
+    "dump_count": 1,
+    "event_count": 9
+  }
 }
