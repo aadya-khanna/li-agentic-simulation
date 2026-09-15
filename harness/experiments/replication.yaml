@@ -1,0 +1,13 @@
+# Full-season replication matrix — run before citing any behavioural rate.
+experiment_id: replication-v1
+conditions:
+  - minimal
+  - incentive
+seeds:
+  - 42
+  - 43
+  - 44
+days: 7
+stub: true
+prize_emphasis: high
+resume: true

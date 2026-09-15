@@ -23,15 +23,22 @@ def load_spec(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def run_matrix(spec_path: Path, *, force: bool = False) -> None:
+def run_matrix(
+    spec_path: Path,
+    *,
+    force: bool = False,
+    live: bool | None = None,
+    stub_on_error: bool | None = None,
+) -> None:
     spec = load_spec(spec_path)
     experiment_id = spec["experiment_id"]
     conditions = spec["conditions"]
     seeds = spec["seeds"]
     days = spec.get("days", 1)
-    stub = spec.get("stub", True)
+    stub = spec.get("stub", True) if live is None else not live
     prize = spec.get("prize_emphasis", "high")
     resume = spec.get("resume", True)
+    use_stub_on_error = spec.get("stub_on_error", False) if stub_on_error is None else stub_on_error
 
     for condition in conditions:
         for seed in seeds:
@@ -50,20 +57,22 @@ def run_matrix(spec_path: Path, *, force: bool = False) -> None:
                 seed=seed,
                 experiment_id=experiment_id,
                 run_id=run_id,
+                stub_on_error=use_stub_on_error,
             )
-            print(f"run: {experiment_id}/{condition}/{run_id}")
+            mode = "stub" if stub else "live"
+            print(f"run: {experiment_id}/{condition}/{run_id} ({mode})")
             sim = Simulation(settings)
             sim.run()
             write_metrics(settings.events_path)
             brief = summarize_events(sim.log.events)
             write_brief_log(brief, run_dir / "brief.log")
 
-    from analysis.compare import compare_experiment  # noqa: E402
+    from analysis.compare import write_summaries  # noqa: E402
 
-    summary = compare_experiment(LOG_DIR / "experiments" / experiment_id)
-    out = LOG_DIR / "experiments" / experiment_id / "summary.json"
-    out.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    print(f"summary -> {out}")
+    exp_dir = LOG_DIR / "experiments" / experiment_id
+    write_summaries(exp_dir)
+    print(f"summary -> {exp_dir / 'summary.json'}")
+    print(f"replication_summary -> {exp_dir / 'replication_summary.json'}")
 
 
 def main() -> None:
@@ -75,8 +84,19 @@ def main() -> None:
         default=ROOT / "harness" / "experiments" / "baseline.yaml",
     )
     parser.add_argument("--force", action="store_true", help="Re-run even if manifest exists")
+    parser.add_argument("--live", action="store_true", help="Live LLM (overrides spec stub: false)")
+    parser.add_argument(
+        "--stub-on-error",
+        action="store_true",
+        help="Fall back to stub decisions on API errors (cron parity)",
+    )
     args = parser.parse_args()
-    run_matrix(args.spec, force=args.force)
+    run_matrix(
+        args.spec,
+        force=args.force,
+        live=True if args.live else None,
+        stub_on_error=True if args.stub_on_error else None,
+    )
 
 
 if __name__ == "__main__":

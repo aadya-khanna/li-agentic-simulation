@@ -1,0 +1,13 @@
+# Live 7-day replication matrix — thesis evidence layer (API cost applies).
+experiment_id: replication-live-v1
+conditions:
+  - minimal
+  - incentive
+seeds:
+  - 42
+  - 43
+  - 44
+days: 7
+stub: false
+prize_emphasis: high
+resume: true
