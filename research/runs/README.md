@@ -71,3 +71,4 @@ Full **7-day** seasons only. No smoke or truncated runs.
 | [065](065-scheduled-minimal-cron-20261030-1755.md) | `scheduled/minimal/cron-20261030-1755` | minimal | live | 2026-10-30 |
 | [066](066-scheduled-minimal-cron-20261031-1708.md) | `scheduled/minimal/cron-20261031-1708` | minimal | live | 2026-10-31 |
 | [067](067-scheduled-minimal-cron-20261101-1750.md) | `scheduled/minimal/cron-20261101-1750` | minimal | live | 2026-11-01 |
+| [068](068-scheduled-minimal-cron-20261102-2138.md) | `scheduled/minimal/cron-20261102-2138` | minimal | live | 2026-11-02 |
